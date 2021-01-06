@@ -1,0 +1,9 @@
+.DS_Store
+/.idea
+/.update.timestamp
+/.vscode
+/task_runner.nims
+/nimcache
+/test/build
+/vendor/.nimble
+TODO
