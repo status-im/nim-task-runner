@@ -3,13 +3,11 @@ mode = ScriptMode.Verbose
 version       = "0.1.0"
 author        = "Status Research & Development GmbH"
 description   = "General purpose background task runner for Nim programs"
-license       = "MIT"
+license       = "Apache License 2.0 or MIT"
 skipDirs      = @["test"]
 
 requires "nim >= 1.2.0",
   "chronos"
-
-import strutils
 
 proc buildAndRunTest(name: string,
                      srcDir = "test/",
@@ -28,8 +26,10 @@ proc buildAndRunTest(name: string,
     " --debugger:native" &
     " --define:chronicles_line_numbers" &
     " --define:debug" &
+    " --linetrace:on" &
     " --nimcache:nimcache/test/" & name &
     " --out:" & outDir & name &
+    " --stacktrace:on" &
     " --threads:on" &
     " --tlsEmulation:off" &
     " " &
@@ -41,4 +41,22 @@ proc buildAndRunTest(name: string,
   exec outDir & name
 
 task tests, "Run all tests":
-  buildAndRunTest "all_tests"
+  buildAndRunTest "test_all"
+
+task channel_helgrind, "Run channel implementation through helgrind to detect threading or lock errors":
+  rmDir "test/build/"
+  mkDir "test/build/"
+  var commands = [
+    "nim c" &
+    " --define:useMalloc" &
+    " --nimcache:nimcache/test/channel_helgrind" &
+    " --out:test/build/test_achannels" &
+    " --threads:on" &
+    " --tlsEmulation:off" &
+    " test/test_achannels.nim",
+    "valgrind --tool=helgrind test/build/test_achannels"
+  ]
+  echo "\n" & commands[0]
+  exec commands[0]
+  echo "\n" & commands[1]
+  exec commands[1]

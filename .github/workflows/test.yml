@@ -37,6 +37,11 @@ jobs:
 
     steps:
 
+      - name: Install Valgrind via APT
+        if: matrix.platform.os == 'ubuntu'
+        run: |
+          sudo apt install -y valgrind
+
       - name: Install awk (gawk) and coreutils via Homebrew
         if: matrix.platform.os == 'macos'
         run: |
@@ -75,3 +80,8 @@ jobs:
       - name: Build and run tests
         run: |
           make -j${NPROC} NIMFLAGS="--parallelBuild:${NPROC}" V=1 test
+
+      - name: Build and run channel_helgrind
+        if: matrix.platform.os == 'ubuntu'
+        run: |
+          ./env.sh nimble channel_helgrind
