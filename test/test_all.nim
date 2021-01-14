@@ -8,14 +8,6 @@
 #             Licensed under either of
 #  Apache License, version 2.0, (LICENSE-APACHEv2)
 #             MIT license (LICENSE-MIT)
-import unittest
-
-import chronos
-
-import ../task_runner
-
-suite "Task runner test suite":
-  test "dummy test":
-
-    check:
-       1 == 1
+import
+  ./test_achannels,
+  ./test_task_runner
