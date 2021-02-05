@@ -26,6 +26,7 @@ proc buildAndRunTest(name: string,
     " --debugger:native" &
     " --define:chronicles_line_numbers" &
     " --define:debug" &
+    " --define:ssl" &
     " --linetrace:on" &
     " --nimcache:nimcache/test/" & name &
     " --out:" & outDir & name &
@@ -43,13 +44,13 @@ proc buildAndRunTest(name: string,
 task tests, "Run all tests":
   buildAndRunTest "test_all"
 
-task channel_helgrind, "Run channel implementation through helgrind to detect threading or lock errors":
+task achannels_helgrind, "Run channel implementation through helgrind to detect threading or lock errors":
   rmDir "test/build/"
   mkDir "test/build/"
   var commands = [
     "nim c" &
     " --define:useMalloc" &
-    " --nimcache:nimcache/test/channel_helgrind" &
+    " --nimcache:nimcache/test/achannels_helgrind" &
     " --out:test/build/test_achannels" &
     " --threads:on" &
     " --tlsEmulation:off" &
