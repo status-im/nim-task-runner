@@ -9,6 +9,6 @@
 #             Licensed under either of
 #  Apache License, version 2.0, (LICENSE-APACHEv2)
 #             MIT license (LICENSE-MIT)
-import ./task_runner/achannels
+import ./task_runner/achannels, ./task_runner/sys
 
-export achannels
+export achannels, sys
