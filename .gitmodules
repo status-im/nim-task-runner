@@ -12,3 +12,8 @@
 [submodule "vendor/nim-chronos"]
 	path = vendor/nim-chronos
 	url = https://github.com/michaelsbradleyjr/nim-chronos.git
+[submodule "vendor/nim-waku"]
+	path = vendor/nim-waku
+	url = https://github.com/status-im/nim-waku.git
+	ignore = untracked
+	branch = master
