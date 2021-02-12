@@ -23,3 +23,28 @@
 	url = https://github.com/status-im/nim-waku.git
 	ignore = untracked
 	branch = master
+[submodule "vendor/nim-confutils"]
+	path = vendor/nim-confutils
+	url = https://github.com/status-im/nim-confutils.git
+	ignore = untracked
+	branch = master
+[submodule "vendor/nim-chronicles"]
+	path = vendor/nim-chronicles
+	url = https://github.com/status-im/nim-chronicles.git
+	ignore = untracked
+	branch = master
+[submodule "vendor/nim-libp2p"]
+	path = vendor/nim-libp2p
+	url = https://github.com/status-im/nim-libp2p.git
+	ignore = untracked
+	branch = master
+[submodule "vendor/nim-eth"]
+	path = vendor/nim-eth
+	url = https://github.com/status-im/nim-eth.git
+	ignore = untracked
+	branch = master
+[submodule "vendor/nim-json-rpc"]
+	path = vendor/nim-json-rpc
+	url = https://github.com/status-im/nim-json-rpc.git
+	ignore = untracked
+	branch = master
