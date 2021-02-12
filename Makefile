@@ -50,8 +50,12 @@ clean: | clean-common clean-build-dirs
 clean-build-dirs:
 	rm -rf test/build
 
+# nim-nat-traversal assumes nat-libs are available in its parent's vendor;
+# also, in msys2 environment miniupnpc's Makefile.mingw's invocation of
+# `wingenminiupnpcstrings.exe` will fail if containing directory is not in PATH
 nat-libs-sub:
 	cd vendor/nim-waku && \
+		PATH="$(shell pwd)/vendor/nim-waku/vendor/nim-nat-traversal/vendor/miniupnp/miniupnpc:$${PATH}" \
 		$(ENV_SCRIPT) $(MAKE) USE_SYSTEM_NIM=1 nat-libs
 
 deps: | deps-common nat-libs-sub
