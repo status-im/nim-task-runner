@@ -17,6 +17,11 @@ procSuite "Task runner use cases":
 
   asyncTest "Long-running task: ping-pong experiment":
 
+    # `asyncSleep` is used in this test to provide (additional) non-determism
+    # in send/recv timing, and also to demonstrate how `await [chan].send`
+    # calls can resolve even when a receiver on another thread is not currently
+    # polling the channel with `await [chan].recv`
+
     type
       ThreadArg = object
         chanRecv: AsyncChannel[cstring]
@@ -128,6 +133,11 @@ procSuite "Task runner use cases":
 
 
   asyncTest "Long-running task: Waku v2 node":
+
+    # `asyncSleep` is used in this test to provide (additional) non-determism
+    # in send/recv timing, and also to demonstrate how `await [chan].send`
+    # calls can resolve even when a receiver on another thread is not currently
+    # polling the channel with `await [chan].recv`
 
     type
       ThreadArg = object
