@@ -18,3 +18,8 @@
 [submodule "vendor/nim-unittest2"]
 	path = vendor/nim-unittest2
 	url = https://github.com/status-im/nim-unittest2.git
+[submodule "vendor/nim-waku"]
+	path = vendor/nim-waku
+	url = https://github.com/status-im/nim-waku.git
+	ignore = untracked
+	branch = master
