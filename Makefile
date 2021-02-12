@@ -11,6 +11,7 @@ BUILD_SYSTEM_DIR := vendor/nimbus-build-system
 	clean \
 	clean-build-dirs \
 	deps \
+	nat-libs-sub \
 	test \
 	update
 
@@ -50,7 +51,11 @@ clean: | clean-common clean-build-dirs
 clean-build-dirs:
 	rm -rf test/build
 
-deps: | deps-common
+nat-libs-sub:
+	cd vendor/nim-waku && \
+		$(ENV_SCRIPT) $(MAKE) USE_SYSTEM_NIM=1 nat-libs
+
+deps: | deps-common nat-libs-sub
 
 update: | update-common
 
