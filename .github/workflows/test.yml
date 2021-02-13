@@ -85,3 +85,4 @@ jobs:
         if: matrix.platform.os == 'ubuntu'
         run: |
           ./env.sh nimble achannels_helgrind
+          ./env.sh nimble use_cases_helgrind
