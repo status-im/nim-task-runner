@@ -38,16 +38,18 @@ procSuite "Task runner use cases":
         chanSend: AsyncChannel[cstring]
 
     proc worker(arg: ThreadArg) {.async.} =
-      arg.chanRecv.open()
-      arg.chanSend.open()
+      let chanRecv = arg.chanRecv
+      let chanSend = arg.chanSend
+      chanRecv.open()
+      chanSend.open()
 
       info "[ping-pong worker] sending 'ready'"
-      await arg.chanSend.send("ready".cstring)
+      await chanSend.send("ready".cstring)
 
       while true:
         info "[ping-pong worker] waiting for message"
         # convert cstring back to string to avoid unexpected collection
-        let received = $(await arg.chanRecv.recv())
+        let received = $(await chanRecv.recv())
 
         case received
           of "a":
@@ -59,21 +61,21 @@ procSuite "Task runner use cases":
           of "shutdown":
             info "[ping-pong worker] received 'shutdown'"
             info "[ping-pong worker] sending 'shutdownSuccess'"
-            await arg.chanSend.send("shutdownSuccess".cstring)
+            await chanSend.send("shutdownSuccess".cstring)
             info "[ping-pong worker] breaking while loop"
             break
           else: warn "[ping-pong worker] unknown message", message=received
 
-        let message = $rand(1..6)
+        let message = $rand(1..10)
         info "[ping-pong worker] sending random message", message=message
-        await arg.chanSend.send(message.cstring)
+        await chanSend.send(message.cstring)
 
-        let ms = rand(10..500)
+        let ms = rand(100..250)
         info "[ping-pong worker] sleeping", duration=($ms & "ms")
         await sleepAsync ms.milliseconds
 
-      arg.chanRecv.close()
-      arg.chanSend.close()
+      chanRecv.close()
+      chanSend.close()
 
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
@@ -125,7 +127,7 @@ procSuite "Task runner use cases":
           info "[ping-pong test] sending 'unknown'"
           await chanSend.send("unknown".cstring)
 
-      let ms = rand(10..500)
+      let ms = rand(100..250)
       info "[ping-pong test] sleeping", duration=($ms & "ms")
       await sleepAsync ms.milliseconds
 
@@ -143,6 +145,9 @@ procSuite "Task runner use cases":
 
 
   asyncTest "Long-running task: Waku v2 node":
+
+    # `counter` procs are used in this test to demonstrate concurrency within
+    # independent event loops running on different threads
 
     # `asyncSleep` is used in this test to provide (additional) non-determism
     # in send/recv timing and counter operations, and also to demonstrate how
@@ -164,8 +169,10 @@ procSuite "Task runner use cases":
       result = node
 
     proc worker(arg: ThreadArg) {.async.} =
-      arg.chanRecv.open()
-      arg.chanSend.open()
+      let chanRecv = arg.chanRecv
+      let chanSend = arg.chanSend
+      chanRecv.open()
+      chanSend.open()
 
       var nodeConfig = WakuNodeConf.load()
       nodeConfig.portsShift = 5432
@@ -173,8 +180,21 @@ procSuite "Task runner use cases":
       await node.start()
       node.mountRelay()
 
+      proc counter() {.async.} =
+        var count = 0
+        while true:
+          count = count + 1
+          info "[waku worker counter] counting", count=count
+          await chanSend.send("counted".cstring)
+
+          let ms = rand(100..250)
+          info "[waku worker counter] sleeping", duration=($ms & "ms")
+          await sleepAsync ms.milliseconds
+
       info "[waku worker] sending ready message"
-      await arg.chanSend.send("ready".cstring)
+      await chanSend.send("ready".cstring)
+      info "[waku worker] starting worker counter"
+      discard counter()
 
       proc handler(topic: Topic, data: seq[byte]) {.async.} =
         let
@@ -186,24 +206,14 @@ procSuite "Task runner use cases":
             info "[waku handler] received message", topic=topic,
               payload=payload, contentTopic=message.contentTopic
             info "[waku handler] sending '1'"
-            await arg.chanSend.send("1".cstring)
+            await chanSend.send("1".cstring)
           of "message2":
             info "[waku handler] received message", topic=topic,
               payload=payload, contentTopic=message.contentTopic
             info "[waku handler] sending '2'"
-            await arg.chanSend.send("2".cstring)
+            await chanSend.send("2".cstring)
           else: warn "[waku handler] unknown message", topic=topic,
                   payload=payload, contentTopic=message.contentTopic
-
-      proc counter() {.async.} =
-        var count = 0
-        while true:
-          let ms = rand(100..250)
-          info "[waku worker counter] sleeping", duration=($ms & "ms")
-          await sleepAsync ms.milliseconds
-
-          info "[waku worker counter] counting", count=count
-          count = count + 1
 
       let
         message1 = WakuMessage(payload: cast[seq[byte]]("message1"),
@@ -212,12 +222,10 @@ procSuite "Task runner use cases":
           contentTopic: ContentTopic(1))
         topic = "testing"
 
-      discard counter()
-
       while true:
         info "[waku worker] waiting for message"
         # convert cstring back to string to avoid unexpected collection
-        let received = $(await arg.chanRecv.recv())
+        let received = $(await chanRecv.recv())
 
         case received
           of "subscribe":
@@ -234,30 +242,24 @@ procSuite "Task runner use cases":
             info "[waku worker] stopping waku node"
             await node.stop()
             info "[waku worker] sending 'shutdownSuccess'"
-            await arg.chanSend.send("shutdownSuccess".cstring)
+            await chanSend.send("shutdownSuccess".cstring)
             info "[waku worker] breaking while loop"
             break
-          else: warn "[waku worker] unknown message", message=received
+          else:
+            if received == "counted":
+              info "[waku worker] waku test counted"
+            else:
+              warn "[waku worker] unknown message", message=received
 
-        let ms = rand(10..500)
+        let ms = rand(100..250)
         info "[waku worker] sleeping", duration=($ms & "ms")
         await sleepAsync ms.milliseconds
 
-      arg.chanRecv.close()
-      arg.chanSend.close()
+      chanRecv.close()
+      chanSend.close()
 
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
-
-    proc counter() {.async.} =
-      var count = 0
-      while true:
-        let ms = rand(100..250)
-        info "[waku test counter] sleeping", duration=($ms & "ms")
-        await sleepAsync ms.milliseconds
-
-        info "[waku test counter] counting", count=count
-        count = count + 1
 
     let chanRecv = newAsyncChannel[cstring](-1)
     let chanSend = newAsyncChannel[cstring](-1)
@@ -268,7 +270,16 @@ procSuite "Task runner use cases":
     chanSend.open()
     createThread(thr, workerThread, arg)
 
-    discard counter()
+    proc counter() {.async.} =
+      var count = 0
+      while true:
+        count = count + 1
+        info "[waku test counter] counting", count=count
+        await chanSend.send("counted".cstring)
+
+        let ms = rand(100..250)
+        info "[waku test counter] sleeping", duration=($ms & "ms")
+        await sleepAsync ms.milliseconds
 
     var shutdown = false
 
@@ -280,6 +291,8 @@ procSuite "Task runner use cases":
       case received
         of "ready":
           info "[waku test] waku worker is ready"
+          info "[waku test] starting test counter"
+          discard counter()
           info "[waku test] sending 'subscribe'"
           await chanSend.send("subscribe".cstring)
           info "[waku test] sending 'publish1'"
@@ -297,9 +310,13 @@ procSuite "Task runner use cases":
           shutdown = true
           info "[waku test] breaking while loop"
           break
-        else: warn "[waku test] unknown message", message=received
+        else:
+          if received == "counted":
+            info "[waku test] waku worker counted"
+          else:
+            warn "[waku test] unknown message", message=received
 
-      let ms = rand(10..500)
+      let ms = rand(100..250)
       info "[waku test] sleeping", duration=($ms & "ms")
       await sleepAsync ms.milliseconds
 

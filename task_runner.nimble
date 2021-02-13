@@ -43,18 +43,36 @@ proc buildAndRunTest(name: string,
 task tests, "Run all tests":
   buildAndRunTest "test_all"
 
-task channel_helgrind, "Run channel implementation through helgrind to detect threading or lock errors":
+task achannels_helgrind, "Run channel implementation through helgrind to detect threading or lock errors":
   rmDir "test/build/"
   mkDir "test/build/"
   var commands = [
     "nim c" &
     " --define:useMalloc" &
-    " --nimcache:nimcache/test/channel_helgrind" &
+    " --nimcache:nimcache/test/achannels_helgrind" &
     " --out:test/build/test_achannels" &
     " --threads:on" &
     " --tlsEmulation:off" &
     " test/test_achannels.nim",
     "valgrind --tool=helgrind test/build/test_achannels"
+  ]
+  echo "\n" & commands[0]
+  exec commands[0]
+  echo "\n" & commands[1]
+  exec commands[1]
+
+task use_cases_helgrind, "Run use cases through helgrind to detect threading or lock errors":
+  rmDir "test/build/"
+  mkDir "test/build/"
+  var commands = [
+    "nim c" &
+      " --define:useMalloc" &
+      " --nimcache:nimcache/test/use_cases_helgrind" &
+      " --out:test/build/test_use_cases" &
+      " --threads:on" &
+      " --tlsEmulation:off" &
+      " test/test_use_cases.nim",
+    "valgrind --tool=helgrind test/build/test_use_cases"
   ]
   echo "\n" & commands[0]
   exec commands[0]

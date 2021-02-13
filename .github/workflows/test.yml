@@ -81,7 +81,8 @@ jobs:
         run: |
           make -j${NPROC} NIMFLAGS="--parallelBuild:${NPROC}" V=1 test
 
-      - name: Build and run channel_helgrind
+      - name: Build and run helgrind tasks
         if: matrix.platform.os == 'ubuntu'
         run: |
-          ./env.sh nimble channel_helgrind
+          ./env.sh nimble achannels_helgrind
+          ./env.sh nimble use_cases_helgrind
