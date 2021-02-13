@@ -135,9 +135,9 @@ procSuite "Task runner use cases":
   asyncTest "Long-running task: Waku v2 node":
 
     # `asyncSleep` is used in this test to provide (additional) non-determism
-    # in send/recv timing, and also to demonstrate how `await [chan].send`
-    # calls can resolve even when a receiver on another thread is not currently
-    # polling the channel with `await [chan].recv`
+    # in send/recv timing and counter operations, and also to demonstrate how
+    # `await [chan].send` calls can resolve even when a receiver on another
+    # thread is not currently polling the channel with `await [chan].recv`
 
     type
       ThreadArg = object
@@ -185,12 +185,24 @@ procSuite "Task runner use cases":
           else: warn "[waku handler] unknown message", topic=topic,
                   payload=payload, contentTopic=message.contentTopic
 
+      proc counter() {.async.} =
+        var count = 0
+        while true:
+          let ms = rand(100..250)
+          info "[waku worker counter] sleeping", duration=($ms & "ms")
+          await sleepAsync ms.milliseconds
+
+          info "[waku worker counter] counting", count=count
+          count = count + 1
+
       let
         message1 = WakuMessage(payload: cast[seq[byte]]("message1"),
           contentTopic: ContentTopic(1))
         message2 = WakuMessage(payload: cast[seq[byte]]("message2"),
           contentTopic: ContentTopic(1))
         topic = "testing"
+
+      discard counter()
 
       while true:
         info "[waku worker] waiting for message"
@@ -227,6 +239,16 @@ procSuite "Task runner use cases":
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
 
+    proc counter() {.async.} =
+      var count = 0
+      while true:
+        let ms = rand(100..250)
+        info "[waku test counter] sleeping", duration=($ms & "ms")
+        await sleepAsync ms.milliseconds
+
+        info "[waku test counter] counting", count=count
+        count = count + 1
+
     let chanRecv = newAsyncChannel[cstring](-1)
     let chanSend = newAsyncChannel[cstring](-1)
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
@@ -235,6 +257,8 @@ procSuite "Task runner use cases":
     chanRecv.open()
     chanSend.open()
     createThread(thr, workerThread, arg)
+
+    discard counter()
 
     var shutdown = false
 
