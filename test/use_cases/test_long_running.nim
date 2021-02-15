@@ -17,15 +17,15 @@ import # vendor libs
   wakunode2], waku/v2/protocol/waku_message, stew/shims/net as stewNet
 
 import # task-runner libs
-  ../task_runner, ./test_helpers
+  ../../task_runner, ../test_helpers
 
 # call randomize() once to initialize the default random number generator else
 # the same results will occur every time these examples are run
 randomize()
 
-procSuite "Task runner use cases":
+procSuite "Task runner long-running use cases":
 
-  asyncTest "Long-running task: ping-pong experiment":
+  asyncTest "Long-running ping-pong experiment":
 
     # `asyncSleep` is used in this test to provide (additional) non-determism
     # in send/recv timing, and also to demonstrate how `await [chan].send`
@@ -144,7 +144,7 @@ procSuite "Task runner use cases":
       shutdown == true
 
 
-  asyncTest "Long-running task: Waku v2 node":
+  asyncTest "Long-running Waku v2 node":
 
     # `counter` procs are used in this test to demonstrate concurrency within
     # independent event loops running on different threads
