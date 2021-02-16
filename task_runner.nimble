@@ -72,7 +72,7 @@ task use_cases_helgrind, "Run use cases through helgrind to detect threading or 
       " --out:test/build/test_use_cases" &
       " --threads:on" &
       " --tlsEmulation:off" &
-      " test/test_use_cases.nim",
+      " test/use_cases/test_all.nim",
     "valgrind --tool=helgrind test/build/test_use_cases"
   ]
   echo "\n" & commands[0]
