@@ -9,6 +9,7 @@ BUILD_SYSTEM_DIR := vendor/nimbus-build-system
 .PHONY: \
 	all \
 	clean \
+	clean-build-dirs \
 	deps \
 	nat-libs-sub \
 	test \
