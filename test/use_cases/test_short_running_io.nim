@@ -9,7 +9,7 @@
 #  Apache License, version 2.0, (LICENSE-APACHEv2)
 #             MIT license (LICENSE-MIT)
 import # nim libs
-  random, unittest, strutils, httpclient
+  random, unittest, strutils
 
 import # vendor libs
   chronicles, chronos, json_serialization
@@ -39,7 +39,18 @@ procSuite "Task runner short-running IO use cases":
       HttpResponse = object
         id: int
         result: string
+      AsyncHttpClient = object
 
+    proc getContent(asyncHttpClient: AsyncHttpClient, url: string): Future[string] {.async.} =
+      case url
+        of "https://1":
+          return "RESPONSE 1"
+        of "https://2":
+          let ms = rand(500..1000)
+          await sleepAsync ms.milliseconds
+          return "RESPONSE 2"
+        of "https://3":
+          return "RESPONSE 3"
 
     proc worker(arg: ThreadArg) {.async.} =
       let chanRecv = arg.chanRecv
@@ -47,11 +58,13 @@ procSuite "Task runner short-running IO use cases":
       chanRecv.open()
       chanSend.open()
 
-      let client = newHttpClient()
+      let client = AsyncHttpClient()
 
       proc sendRequest(request: HttpRequest) {.async.} =
         # fire off http request
-        let responseStr = client.getContent(request.url)
+        # info "[http client worker] sending request to url", id=request.id, url=request.url
+        let responseStr = await client.getContent(request.url)
+        # info "[http client worker] received response for request", id=request.id, response=responseStr
         # send response back on the channel
         let response = HttpResponse(id: request.id, result: responseStr)
         let responseEncoded = Json.encode(response)
@@ -88,6 +101,7 @@ procSuite "Task runner short-running IO use cases":
     let chanSend = newAsyncChannel[cstring](-1)
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
     var thr = Thread[ThreadArg]()
+    var receivedIds: seq[int] = @[]
 
     chanRecv.open()
     chanSend.open()
@@ -95,38 +109,40 @@ procSuite "Task runner short-running IO use cases":
 
     var shutdown = false
     while true:
-      info "[http client worker] waiting for message"
+      info "[http client test] waiting for message"
       # convert cstring back to string to avoid unexpected collection
       let received = $(await chanRecv.recv())
 
-      if received == "ready":
-        info "[http client worker] ping-pong worker is ready"
-        info "[http client worker] sending requests"
+      info "[http client test] received message", message=received
 
-        let request1 = HttpRequest(id: 1, url: "https://media1.tenor.com/images/ecce84a28465a81b09d4068e313a9d8b/tenor.gif")
-        let request1Encode = Json.encode(request1)
-        await chanSend.send(request1Encode.cstring)
-
-        let request2 = HttpRequest(id: 2, url: "https://media1.tenor.com/images/d3f81205421989931d4986d796271c71/tenor.gif")
-        let request2Encode = Json.encode(request2)
-        await chanSend.send(request2Encode.cstring)
-
-        let request3 = HttpRequest(id: 3, url: "https://media.tenor.com/images/5d792745433307e6a6236ccff8237f62/tenor.gif")
-        let request3Encode = Json.encode(request3)
-        await chanSend.send(request3Encode.cstring)
-
-
-      elif received.contains("id:"): # http response
+      try: # try to decode HttpResponse
         let response = Json.decode(received, HttpResponse)
-        info "[http client worker] received http response", id=response.id, responseLength=response.result.len
-
-        if response.id == 3:
-          info "[http client worker] sending 'shutdown'"
+        info "[http client test] received http response", id=response.id, responseLength=response.result.len
+        receivedIds.add response.id
+        if receivedIds.len == 3:
+          info "[http client test] sending 'shutdown'"
           await chanSend.send("shutdown".cstring)
-      elif received == "shutdownSuccess":
-        info "[http client worker] received 'shutdownSuccess'"
-        shutdown = true
-        info "[http client worker] breaking while loop"
-        break
-      else:
-        warn "[http client worker] unknown message", message=received
+      except:
+        if received == "ready":
+          info "[http client test] http client worker is ready"
+          info "[http client test] sending requests"
+
+          let request1 = HttpRequest(id: 1, url: "https://1")
+          let request1Encode = Json.encode(request1)
+          await chanSend.send(request1Encode.cstring)
+
+          let request2 = HttpRequest(id: 2, url: "https://2")
+          let request2Encode = Json.encode(request2)
+          await chanSend.send(request2Encode.cstring)
+
+          let request3 = HttpRequest(id: 3, url: "https://3")
+          let request3Encode = Json.encode(request3)
+          await chanSend.send(request3Encode.cstring)
+
+        elif received == "shutdownSuccess":
+          info "[http client test] received 'shutdownSuccess'"
+          shutdown = true
+          info "[http client test] breaking while loop"
+          break
+        else:
+          warn "[http client test] unknown message", message=received
