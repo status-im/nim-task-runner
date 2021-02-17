@@ -9,4 +9,5 @@
 #  Apache License, version 2.0, (LICENSE-APACHEv2)
 #             MIT license (LICENSE-MIT)
 import
-  ./test_long_running
+  ./test_long_running,
+  ./test_short_running_io
