@@ -78,22 +78,23 @@ procSuite "Task runner short-running IO use cases":
         # convert cstring back to string to avoid unexpected collection
         let received = $(await chanRecv.recv())
 
-        if received == "shutdown":
-          info "[http client worker] received 'shutdown'"
-          info "[http client worker] sending 'shutdownSuccess'"
-          await chanSend.send("shutdownSuccess".cstring)
-          info "[http client worker] breaking while loop"
-          break
-
-        elif received.contains("http"): # handle HTTP URL
+        try:
           let request = Json.decode(received, HttpRequest)
           info "[http client worker] received request for URL", url=request.url
           # do not await as we don't want to park the while loop, so we can
           # handle additional concurrent requests
           discard sendRequest(request)
 
-        else: warn "[http client worker] unknown message", message=received
-      
+        except:
+          if received == "shutdown":
+            info "[http client worker] received 'shutdown'"
+            info "[http client worker] sending 'shutdownSuccess'"
+            await chanSend.send("shutdownSuccess".cstring)
+            info "[http client worker] breaking while loop"
+            break
+
+          else: warn "[http client worker] unknown message", message=received
+
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
 
@@ -146,3 +147,5 @@ procSuite "Task runner short-running IO use cases":
           break
         else:
           warn "[http client test] unknown message", message=received
+    check:
+      shutdown == true
