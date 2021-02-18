@@ -45,6 +45,9 @@ procSuite "Task runner short-running synchronous use cases":
         request: HttpRequest
       ThreadTaskArg = object
         id: int
+        # is a ThreadTask a safe thing to put on a thread arg? or should a task
+        # already be encoded as a ThreadSafeString before putting it on the
+        # thread arg?
         task: ThreadTask
         chanSendToWorker: AsyncChannel[ThreadSafeString]
         chanSendToTest: AsyncChannel[ThreadSafeString]
@@ -52,20 +55,21 @@ procSuite "Task runner short-running synchronous use cases":
         id: int
         notice: string
       HttpClient = object
-    
+
     proc getContent(httpClient: HttpClient, url: string): string =
       let
         urlSplit = url.split("://")
         id = urlSplit[1]
 
       if id.parseInt mod 2 == 0:
-        let ms = rand(500..1000)
+        let ms = rand(100..250)
+        info "[threadpool task] sleeping", duration=($ms & "ms")
         sleep ms
 
       return "RESPONSE " & id
 
     proc task(arg: ThreadTaskArg) {.async.} =
-      info "[threadpool task] initiating task", url=arg.task.request.url
+      info "[threadpool task] initiating task", url=arg.task.request.url, threadid=arg.id
       let
         client = HttpClient()
         responseStr = client.getContent(arg.task.request.url)
@@ -74,7 +78,7 @@ procSuite "Task runner short-running synchronous use cases":
       info "[threadpool task] received http response for task", url=arg.task.request.url, response=responseStr
       info "[threadpool task] sending to test", encoded=responseEncoded
       await arg.chanSendToTest.send(responseEncoded.safe)
-      
+
       let
         noticeToWorker = ThreadNotification(id: arg.id, notice: "done")
         noticeToWorkerEncode = Json.encode(noticeToWorker)
@@ -109,7 +113,7 @@ procSuite "Task runner short-running synchronous use cases":
         let
           receivedCStr = await chanRecv.recv()
           received = $receivedCStr
-        
+
         info "[threadpool worker] received message", message=received
         if received == "shutdown":
           info "[threadpool worker] received 'shutdown'"
@@ -127,19 +131,23 @@ procSuite "Task runner short-running synchronous use cases":
             # check if we have tasks waiting on queue
             if taskQueue.len > 0:
               # remove first element from the task queue
+              info "[threadpool worker] adding to taskQueue", newlength=(taskQueue.len + 1)
               taskQueue.add task
+              info "[threadpool worker] removing from taskQueue", newlength=(taskQueue.len - 1)
               task = taskQueue[0]
               taskQueue = taskQueue[1..taskQueue.len - 1]
-            
+
             # no tasks waiting, setup new thread
-            let arg = ThreadTaskArg(task: task, chanSendToWorker: chanRecv, chanSendToTest: chanSend)
+            let arg = ThreadTaskArg(task: task, chanSendToWorker: chanRecv, chanSendToTest: chanSend, id: threadCounter)
             var thr = Thread[ThreadTaskArg]()
             createThread(thr, taskThread, arg)
+            info "[threadpool worker] adding to threadsRunning", newlength=(threadsRunning.len + 1), threadid=arg.id
             threadsRunning.add threadCounter, thr
             threadCounter = threadCounter + 1
 
           elif threadsRunning.len >= MaxThreadPoolSize:
             # add to queue
+            info "[threadpool worker] adding to taskQueue", newlength=(taskQueue.len + 1)
             taskQueue.add task
         except: # not a ThreadTask
           try:
@@ -148,7 +156,19 @@ procSuite "Task runner short-running synchronous use cases":
             if notification.notice == "done":
               let thr = threadsRunning[notification.id]
               joinThread(thr)
+              info "[threadpool worker] removing from threadsRunning", newlength=(threadsRunning.len - 1), threadid=notification.id
               threadsRunning.del notification.id
+
+              if taskQueue.len > 0:
+                info "[threadpool worker] removing from taskQueue", newlength=(taskQueue.len - 1)
+                let task = taskQueue[0]
+                taskQueue = taskQueue[1..taskQueue.len - 1]
+                let arg = ThreadTaskArg(task: task, chanSendToWorker: chanRecv, chanSendToTest: chanSend, id: threadCounter)
+                var thr = Thread[ThreadTaskArg]()
+                createThread(thr, taskThread, arg)
+                info "[threadpool worker] adding to threadsRunning", newlength=(threadsRunning.len + 1), threadid=arg.id
+                threadsRunning.add threadCounter, thr
+                threadCounter = threadCounter + 1
             else:
               error "[threadpool worker] unknown notification", notice=notification.notice
           except Exception as e:
