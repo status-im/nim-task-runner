@@ -10,4 +10,5 @@
 #             MIT license (LICENSE-MIT)
 import
   ./test_long_running,
-  ./test_short_running_io
+  ./test_short_running_io,
+  ./test_short_running_sync
