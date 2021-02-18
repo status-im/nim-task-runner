@@ -55,10 +55,10 @@ procSuite "Task runner short-running synchronous use cases":
     
     proc getContent(httpClient: HttpClient, url: string): string =
       let
-        urlSplit = url.split("//")
-        id = url[1]
+        urlSplit = url.split("://")
+        id = urlSplit[1]
 
-      if id.int mod 2 == 0:
+      if id.parseInt mod 2 == 0:
         let ms = rand(500..1000)
         sleep ms
 
@@ -71,7 +71,8 @@ procSuite "Task runner short-running synchronous use cases":
         responseStr = client.getContent(arg.task.request.url)
         response = HttpResponse(id: arg.task.request.id, result: responseStr)
         responseEncoded = Json.encode(response)
-      info "[threadpool task] received http response for task, sending to test", url=arg.task.request.url, response=responseStr
+      info "[threadpool task] received http response for task", url=arg.task.request.url, response=responseStr
+      info "[threadpool task] sending to test", encoded=responseEncoded
       await arg.chanSendToTest.send(responseEncoded.safe)
       
       let
@@ -150,8 +151,8 @@ procSuite "Task runner short-running synchronous use cases":
               threadsRunning.del notification.id
             else:
               error "[threadpool worker] unknown notification", notice=notification.notice
-          except:
-            warn "[threadpool worker] unknown message", message=received
+          except Exception as e:
+            warn "[threadpool worker] unknown message", message=received, error=e.msg
 
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
@@ -174,11 +175,10 @@ procSuite "Task runner short-running synchronous use cases":
       let
         receivedCStr = await chanRecv.recv()
         received = $receivedCStr
-      info "[threadpool test] received message", messageLen=received.len
 
       try:
         let response = Json.decode(received, HttpResponse)
-        info "[threadpool test] received http response", id=response.id, responseLength=response.result.len
+        info "[threadpool test] received http response", id=response.id, response=response.result
         receivedIds.add response.id
         if receivedIds.len == testRuns:
           info "[threadpool test] sending 'shutdown'"
