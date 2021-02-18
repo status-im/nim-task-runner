@@ -27,7 +27,7 @@ procSuite "Task runner long-running use cases":
 
   asyncTest "Long-running ping-pong experiment":
 
-    # `asyncSleep` is used in this test to provide (additional) non-determism
+    # `sleepAsync` is used in this test to provide (additional) non-determism
     # in send/recv timing, and also to demonstrate how `await [chan].send`
     # calls can resolve even when a receiver on another thread is not currently
     # polling the channel with `await [chan].recv`
@@ -153,7 +153,7 @@ procSuite "Task runner long-running use cases":
     # `counter` procs are used in this test to demonstrate concurrency within
     # independent event loops running on different threads
 
-    # `asyncSleep` is used in this test to provide (additional) non-determism
+    # `sleepAsync` is used in this test to provide (additional) non-determism
     # in send/recv timing and counter operations, and also to demonstrate how
     # `await [chan].send` calls can resolve even when a receiver on another
     # thread is not currently polling the channel with `await [chan].recv`
