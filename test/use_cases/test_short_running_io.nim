@@ -15,7 +15,7 @@ import # vendor libs
   chronicles, chronos, json_serialization
 
 import # task-runner libs
-  ../../task_runner, ../test_helpers
+  ../../task_runner, ../test_helpers, ../../task_runner/sys
 
 # call randomize() once to initialize the default random number generator else
 # the same results will occur every time these examples are run
@@ -68,15 +68,18 @@ procSuite "Task runner short-running IO use cases":
         # send response back on the channel
         let response = HttpResponse(id: request.id, result: responseStr)
         let responseEncoded = Json.encode(response)
-        await chanSend.send(responseEncoded.cstring)
+        await chanSend.send(responseEncoded.toCString)
 
       info "[http client worker] sending 'ready'"
-      await chanSend.send("ready".cstring)
+      await chanSend.send("ready".toCString)
 
       while true:
         info "[http client worker] waiting for message"
         # convert cstring back to string to avoid unexpected collection
-        let received = $(await chanRecv.recv())
+        let
+          receivedCStr = await chanRecv.recv()
+          received = $receivedCStr
+        receivedCStr.freeCString()
 
         try:
           let request = Json.decode(received, HttpRequest)
@@ -89,7 +92,7 @@ procSuite "Task runner short-running IO use cases":
           if received == "shutdown":
             info "[http client worker] received 'shutdown'"
             info "[http client worker] sending 'shutdownSuccess'"
-            await chanSend.send("shutdownSuccess".cstring)
+            await chanSend.send("shutdownSuccess".toCString)
             info "[http client worker] breaking while loop"
             break
 
@@ -112,7 +115,10 @@ procSuite "Task runner short-running IO use cases":
     while true:
       info "[http client test] waiting for message"
       # convert cstring back to string to avoid unexpected collection
-      let received = $(await chanRecv.recv())
+      let
+        receivedCStr = await chanRecv.recv()
+        received = $receivedCStr
+      receivedCStr.freeCString()
 
       info "[http client test] received message", message=received
 
@@ -122,7 +128,7 @@ procSuite "Task runner short-running IO use cases":
         receivedIds.add response.id
         if receivedIds.len == 3:
           info "[http client test] sending 'shutdown'"
-          await chanSend.send("shutdown".cstring)
+          await chanSend.send("shutdown".toCString)
       except:
         if received == "ready":
           info "[http client test] http client worker is ready"
@@ -130,15 +136,15 @@ procSuite "Task runner short-running IO use cases":
 
           let request1 = HttpRequest(id: 1, url: "https://1")
           let request1Encode = Json.encode(request1)
-          await chanSend.send(request1Encode.cstring)
+          await chanSend.send(request1Encode.toCString)
 
           let request2 = HttpRequest(id: 2, url: "https://2")
           let request2Encode = Json.encode(request2)
-          await chanSend.send(request2Encode.cstring)
+          await chanSend.send(request2Encode.toCString)
 
           let request3 = HttpRequest(id: 3, url: "https://3")
           let request3Encode = Json.encode(request3)
-          await chanSend.send(request3Encode.cstring)
+          await chanSend.send(request3Encode.toCString)
 
         elif received == "shutdownSuccess":
           info "[http client test] received 'shutdownSuccess'"

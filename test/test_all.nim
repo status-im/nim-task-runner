@@ -11,5 +11,4 @@
 import
   # ./test_achannels,
   # ./test_task_runner,
-  # ./use_cases/test_long_running
-  ./use_cases/test_short_running_io
+  ./use_cases/test_all
