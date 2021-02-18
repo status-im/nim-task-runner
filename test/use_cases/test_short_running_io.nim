@@ -97,6 +97,9 @@ procSuite "Task runner short-running IO use cases":
 
           else: warn "[http client worker] unknown message", message=received
 
+      chanRecv.close()
+      chanSend.close()
+
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
 
@@ -151,5 +154,9 @@ procSuite "Task runner short-running IO use cases":
           break
         else:
           warn "[http client test] unknown message", message=received
+
+    chanRecv.close()
+    chanSend.close()
+
     check:
       shutdown == true

@@ -70,6 +70,8 @@ procSuite "Task runner short-running synchronous use cases":
 
     proc task(arg: ThreadTaskArg) {.async.} =
       info "[threadpool task] initiating task", url=arg.task.request.url, threadid=arg.id
+      arg.chanSendToTest.open()
+      arg.chanSendToWorker.open()
       let
         client = HttpClient()
         responseStr = client.getContent(arg.task.request.url)
@@ -84,6 +86,8 @@ procSuite "Task runner short-running synchronous use cases":
         noticeToWorkerEncode = Json.encode(noticeToWorker)
       info "[threadpool task] sending 'done' notice to worker", threadid=arg.id
       await arg.chanSendToWorker.send(noticeToWorkerEncode.safe)
+      arg.chanSendToTest.close()
+      arg.chanSendToWorker.close()
 
     proc taskThread(arg: ThreadTaskArg) {.thread.} =
       waitFor task(arg)
@@ -174,6 +178,9 @@ procSuite "Task runner short-running synchronous use cases":
           except Exception as e:
             warn "[threadpool worker] unknown message", message=received, error=e.msg
 
+      chanRecv.close()
+      chanSend.close()
+
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
 
@@ -220,5 +227,9 @@ procSuite "Task runner short-running synchronous use cases":
           break
         else:
           warn "[threadpool test] unknown message", message=received
+
+    chanRecv.close()
+    chanSend.close()
+
     check:
       shutdown == true
