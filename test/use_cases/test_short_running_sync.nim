@@ -39,15 +39,15 @@ procSuite "Task runner short-running synchronous use cases":
         id: int
         result: string
       ThreadArg = object
-        chanRecv: AsyncChannel[cstring]
-        chanSend: AsyncChannel[cstring]
+        chanRecv: AsyncChannel[ThreadSafeString]
+        chanSend: AsyncChannel[ThreadSafeString]
       ThreadTask = object
         request: HttpRequest
       ThreadTaskArg = object
         id: int
         task: ThreadTask
-        chanSendToWorker: AsyncChannel[cstring]
-        chanSendToTest: AsyncChannel[cstring]
+        chanSendToWorker: AsyncChannel[ThreadSafeString]
+        chanSendToTest: AsyncChannel[ThreadSafeString]
       ThreadNotification = object
         id: int
         notice: string
@@ -71,14 +71,14 @@ procSuite "Task runner short-running synchronous use cases":
         responseStr = client.getContent(arg.task.request.url)
         response = HttpResponse(id: arg.task.request.id, result: responseStr)
         responseEncoded = Json.encode(response)
-      info "[threadpool task] received http response for task, sending to test", url=arg.task.request.url, contentLength=responseStr.len
-      await arg.chanSendToTest.send(responseEncoded.toCString)
+      info "[threadpool task] received http response for task, sending to test", url=arg.task.request.url, response=responseStr
+      await arg.chanSendToTest.send(responseEncoded.safe)
       
       let
         noticeToWorker = ThreadNotification(id: arg.id, notice: "done")
         noticeToWorkerEncode = Json.encode(noticeToWorker)
       info "[threadpool task] sending 'done' notice to worker", threadid=arg.id
-      await arg.chanSendToWorker.send(noticeToWorkerEncode.toCString)
+      await arg.chanSendToWorker.send(noticeToWorkerEncode.safe)
 
     proc taskThread(arg: ThreadTaskArg) {.thread.} =
       waitFor task(arg)
@@ -101,20 +101,19 @@ procSuite "Task runner short-running synchronous use cases":
       # if thread "done" received, teardown thread
 
       info "[threadpool worker] sending 'ready'"
-      await chanSend.send("ready".toCString)
+      await chanSend.send("ready".safe)
 
       while true:
         info "[threadpool worker] waiting for message"
         let
           receivedCStr = await chanRecv.recv()
           received = $receivedCStr
-        receivedCStr.freeCString()
         
         info "[threadpool worker] received message", message=received
         if received == "shutdown":
           info "[threadpool worker] received 'shutdown'"
           info "[threadpool worker] sending 'shutdownSuccess'"
-          await chanSend.send("shutdownSuccess".toCString)
+          await chanSend.send("shutdownSuccess".safe)
           info "[threadpool worker] breaking while loop"
           break
 
@@ -157,8 +156,8 @@ procSuite "Task runner short-running synchronous use cases":
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
 
-    let chanRecv = newAsyncChannel[cstring](-1)
-    let chanSend = newAsyncChannel[cstring](-1)
+    let chanRecv = newAsyncChannel[ThreadSafeString](-1)
+    let chanSend = newAsyncChannel[ThreadSafeString](-1)
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
     var thr = Thread[ThreadArg]()
     var receivedIds: seq[int] = @[]
@@ -175,7 +174,6 @@ procSuite "Task runner short-running synchronous use cases":
       let
         receivedCStr = await chanRecv.recv()
         received = $receivedCStr
-      receivedCStr.freeCString()
       info "[threadpool test] received message", messageLen=received.len
 
       try:
@@ -184,7 +182,7 @@ procSuite "Task runner short-running synchronous use cases":
         receivedIds.add response.id
         if receivedIds.len == testRuns:
           info "[threadpool test] sending 'shutdown'"
-          await chanSend.send("shutdown".toCString)
+          await chanSend.send("shutdown".safe)
       except:
         if received == "ready":
           info "[threadpool test] received 'ready'"
@@ -193,7 +191,7 @@ procSuite "Task runner short-running synchronous use cases":
               request = HttpRequest(id: i, url: "https://" & $i)
               task = ThreadTask(request: request)
               taskEncoded = Json.encode(task)
-            await chanSend.send(taskEncoded.toCString)
+            await chanSend.send(taskEncoded.safe)
 
         elif received == "shutdownSuccess":
           info "[threadpool test] received 'shutdownSuccess'"
