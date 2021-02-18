@@ -31,8 +31,8 @@ procSuite "Task runner short-running IO use cases":
 
     type
       ThreadArg = object
-        chanRecv: AsyncChannel[cstring]
-        chanSend: AsyncChannel[cstring]
+        chanRecv: AsyncChannel[ThreadSafeString]
+        chanSend: AsyncChannel[ThreadSafeString]
       HttpRequest = object
         id: int
         url: string
@@ -68,10 +68,10 @@ procSuite "Task runner short-running IO use cases":
         # send response back on the channel
         let response = HttpResponse(id: request.id, result: responseStr)
         let responseEncoded = Json.encode(response)
-        await chanSend.send(responseEncoded.toCString)
+        await chanSend.send(responseEncoded.safe)
 
       info "[http client worker] sending 'ready'"
-      await chanSend.send("ready".toCString)
+      await chanSend.send("ready".safe)
 
       while true:
         info "[http client worker] waiting for message"
@@ -79,7 +79,6 @@ procSuite "Task runner short-running IO use cases":
         let
           receivedCStr = await chanRecv.recv()
           received = $receivedCStr
-        receivedCStr.freeCString()
 
         try:
           let request = Json.decode(received, HttpRequest)
@@ -92,7 +91,7 @@ procSuite "Task runner short-running IO use cases":
           if received == "shutdown":
             info "[http client worker] received 'shutdown'"
             info "[http client worker] sending 'shutdownSuccess'"
-            await chanSend.send("shutdownSuccess".toCString)
+            await chanSend.send("shutdownSuccess".safe)
             info "[http client worker] breaking while loop"
             break
 
@@ -101,8 +100,8 @@ procSuite "Task runner short-running IO use cases":
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
 
-    let chanRecv = newAsyncChannel[cstring](-1)
-    let chanSend = newAsyncChannel[cstring](-1)
+    let chanRecv = newAsyncChannel[ThreadSafeString](-1)
+    let chanSend = newAsyncChannel[ThreadSafeString](-1)
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
     var thr = Thread[ThreadArg]()
     var receivedIds: seq[int] = @[]
@@ -118,7 +117,6 @@ procSuite "Task runner short-running IO use cases":
       let
         receivedCStr = await chanRecv.recv()
         received = $receivedCStr
-      receivedCStr.freeCString()
 
       info "[http client test] received message", message=received
 
@@ -128,7 +126,7 @@ procSuite "Task runner short-running IO use cases":
         receivedIds.add response.id
         if receivedIds.len == 3:
           info "[http client test] sending 'shutdown'"
-          await chanSend.send("shutdown".toCString)
+          await chanSend.send("shutdown".safe)
       except:
         if received == "ready":
           info "[http client test] http client worker is ready"
@@ -136,15 +134,15 @@ procSuite "Task runner short-running IO use cases":
 
           let request1 = HttpRequest(id: 1, url: "https://1")
           let request1Encode = Json.encode(request1)
-          await chanSend.send(request1Encode.toCString)
+          await chanSend.send(request1Encode.safe)
 
           let request2 = HttpRequest(id: 2, url: "https://2")
           let request2Encode = Json.encode(request2)
-          await chanSend.send(request2Encode.toCString)
+          await chanSend.send(request2Encode.safe)
 
           let request3 = HttpRequest(id: 3, url: "https://3")
           let request3Encode = Json.encode(request3)
-          await chanSend.send(request3Encode.toCString)
+          await chanSend.send(request3Encode.safe)
 
         elif received == "shutdownSuccess":
           info "[http client test] received 'shutdownSuccess'"

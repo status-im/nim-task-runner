@@ -34,8 +34,8 @@ procSuite "Task runner long-running use cases":
 
     type
       ThreadArg = object
-        chanRecv: AsyncChannel[cstring]
-        chanSend: AsyncChannel[cstring]
+        chanRecv: AsyncChannel[ThreadSafeString]
+        chanSend: AsyncChannel[ThreadSafeString]
 
     proc worker(arg: ThreadArg) {.async.} =
       let chanRecv = arg.chanRecv
@@ -44,7 +44,7 @@ procSuite "Task runner long-running use cases":
       chanSend.open()
 
       info "[ping-pong worker] sending 'ready'"
-      await chanSend.send("ready".toCString)
+      await chanSend.send("ready".safe)
 
       while true:
         info "[ping-pong worker] waiting for message"
@@ -52,7 +52,6 @@ procSuite "Task runner long-running use cases":
         let
           receivedCStr = await chanRecv.recv()
           received = $receivedCStr
-        receivedCStr.freeCString()
 
         case received
           of "a":
@@ -64,14 +63,14 @@ procSuite "Task runner long-running use cases":
           of "shutdown":
             info "[ping-pong worker] received 'shutdown'"
             info "[ping-pong worker] sending 'shutdownSuccess'"
-            await chanSend.send("shutdownSuccess".toCString)
+            await chanSend.send("shutdownSuccess".safe)
             info "[ping-pong worker] breaking while loop"
             break
           else: warn "[ping-pong worker] unknown message", message=received
 
         let message = $rand(1..10)
         info "[ping-pong worker] sending random message", message=message
-        await chanSend.send(message.toCString)
+        await chanSend.send(message.safe)
 
         let ms = rand(100..250)
         info "[ping-pong worker] sleeping", duration=($ms & "ms")
@@ -83,8 +82,8 @@ procSuite "Task runner long-running use cases":
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
 
-    let chanRecv = newAsyncChannel[cstring](-1)
-    let chanSend = newAsyncChannel[cstring](-1)
+    let chanRecv = newAsyncChannel[ThreadSafeString](-1)
+    let chanSend = newAsyncChannel[ThreadSafeString](-1)
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
     var thr = Thread[ThreadArg]()
 
@@ -100,29 +99,28 @@ procSuite "Task runner long-running use cases":
       let
         receivedCStr = await chanRecv.recv()
         received = $receivedCStr
-      receivedCStr.freeCString()
 
       case received
         of "ready":
           info "[ping-pong test] ping-pong worker is ready"
           info "[ping-pong test] sending 'a'"
-          await chanSend.send("a".toCString)
+          await chanSend.send("a".safe)
         of "1":
           info "[ping-pong test] received '1'"
           info "[ping-pong test] sending 'a'"
-          await chanSend.send("a".toCString)
+          await chanSend.send("a".safe)
         of "2":
           info "[ping-pong test] received '2'"
           info "[ping-pong test] sending 'b'"
-          await chanSend.send("b".toCString)
+          await chanSend.send("b".safe)
         of "3":
           info "[ping-pong test] received '3'"
           info "[ping-pong test] sending 'c'"
-          await chanSend.send("c".toCString)
+          await chanSend.send("c".safe)
         of "4":
           info "[ping-pong test] received '4'"
           info "[ping-pong test] sending 'shutdown'"
-          await chanSend.send("shutdown".toCString)
+          await chanSend.send("shutdown".safe)
         of "shutdownSuccess":
           info "[ping-pong test] received 'shutdownSuccess'"
           shutdown = true
@@ -131,7 +129,7 @@ procSuite "Task runner long-running use cases":
         else:
           warn "[ping-pong test] unknown message", message=received
           info "[ping-pong test] sending 'unknown'"
-          await chanSend.send("unknown".toCString)
+          await chanSend.send("unknown".safe)
 
       let ms = rand(100..250)
       info "[ping-pong test] sleeping", duration=($ms & "ms")
@@ -162,8 +160,8 @@ procSuite "Task runner long-running use cases":
 
     type
       ThreadArg = object
-        chanRecv: AsyncChannel[cstring]
-        chanSend: AsyncChannel[cstring]
+        chanRecv: AsyncChannel[ThreadSafeString]
+        chanSend: AsyncChannel[ThreadSafeString]
 
     proc initNode(config: WakuNodeConf = WakuNodeConf.load()): WakuNode =
       let
@@ -191,14 +189,14 @@ procSuite "Task runner long-running use cases":
         while true:
           count = count + 1
           info "[waku worker counter] counting", count=count
-          await chanSend.send("counted".toCString)
+          await chanSend.send("counted".safe)
 
           let ms = rand(100..250)
           info "[waku worker counter] sleeping", duration=($ms & "ms")
           await sleepAsync ms.milliseconds
 
       info "[waku worker] sending ready message"
-      await chanSend.send("ready".toCString)
+      await chanSend.send("ready".safe)
       info "[waku worker] starting worker counter"
       discard counter()
 
@@ -212,12 +210,12 @@ procSuite "Task runner long-running use cases":
             info "[waku handler] received message", topic=topic,
               payload=payload, contentTopic=message.contentTopic
             info "[waku handler] sending '1'"
-            await chanSend.send("1".toCString)
+            await chanSend.send("1".safe)
           of "message2":
             info "[waku handler] received message", topic=topic,
               payload=payload, contentTopic=message.contentTopic
             info "[waku handler] sending '2'"
-            await chanSend.send("2".toCString)
+            await chanSend.send("2".safe)
           else: warn "[waku handler] unknown message", topic=topic,
                   payload=payload, contentTopic=message.contentTopic
 
@@ -234,7 +232,6 @@ procSuite "Task runner long-running use cases":
         let
           receivedCStr = await chanRecv.recv()
           received = $receivedCStr
-        receivedCStr.freeCString
 
         case received
           of "subscribe":
@@ -251,7 +248,7 @@ procSuite "Task runner long-running use cases":
             info "[waku worker] stopping waku node"
             await node.stop()
             info "[waku worker] sending 'shutdownSuccess'"
-            await chanSend.send("shutdownSuccess".toCString)
+            await chanSend.send("shutdownSuccess".safe)
             info "[waku worker] breaking while loop"
             break
           else:
@@ -270,8 +267,8 @@ procSuite "Task runner long-running use cases":
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
 
-    let chanRecv = newAsyncChannel[cstring](-1)
-    let chanSend = newAsyncChannel[cstring](-1)
+    let chanRecv = newAsyncChannel[ThreadSafeString](-1)
+    let chanSend = newAsyncChannel[ThreadSafeString](-1)
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
     var thr = Thread[ThreadArg]()
 
@@ -284,7 +281,7 @@ procSuite "Task runner long-running use cases":
       while true:
         count = count + 1
         info "[waku test counter] counting", count=count
-        await chanSend.send("counted".toCString)
+        await chanSend.send("counted".safe)
 
         let ms = rand(100..250)
         info "[waku test counter] sleeping", duration=($ms & "ms")
@@ -298,7 +295,6 @@ procSuite "Task runner long-running use cases":
       let
         receivedCStr = await chanRecv.recv()
         received = $receivedCStr
-      receivedCStr.freeCString()
 
       case received
         of "ready":
@@ -306,17 +302,17 @@ procSuite "Task runner long-running use cases":
           info "[waku test] starting test counter"
           discard counter()
           info "[waku test] sending 'subscribe'"
-          await chanSend.send("subscribe".toCString)
+          await chanSend.send("subscribe".safe)
           info "[waku test] sending 'publish1'"
-          await chanSend.send("publish1".toCString)
+          await chanSend.send("publish1".safe)
         of "1":
           info "[waku test] received message '1'"
           info "[waku test] sending 'publish2'"
-          await chanSend.send("publish2".toCString)
+          await chanSend.send("publish2".safe)
         of "2":
           info "[waku test] received message '2'"
           info "[waku test] sending 'shutdown'"
-          await chanSend.send("shutdown".toCString)
+          await chanSend.send("shutdown".safe)
         of "shutdownSuccess":
           info "[waku test] received 'shutdownSuccess'"
           shutdown = true
