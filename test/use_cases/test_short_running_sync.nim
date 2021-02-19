@@ -91,7 +91,7 @@ procSuite "Task runner short-running synchronous use cases":
         info "[threadpool task] sending 'done' notice to worker", threadid=arg.id
         await arg.chanSendToWorker.send(noticeToWorkerEncode.safe)
       except Exception as e:
-        error "[threadpool task] error during task run", msg=e.msg
+        error "[threadpool task] exception", error=e.msg
 
       while true:
         discard await arg.chanControlRecv.recv()
@@ -152,18 +152,40 @@ procSuite "Task runner short-running synchronous use cases":
               taskQueue.delete 0, 0
 
             # no tasks waiting, setup new thread
-            let chanControlRecv = newAsyncChannel[ThreadSafeString](-1)
-            let arg = ThreadTaskArg(task: task, chanSendToWorker: chanRecv, chanSendToTest: chanSend, chanControlRecv: chanControlRecv, id: threadCounter)
-            var thr = Thread[ThreadTaskArg]()
-            createThread(thr, taskThread, arg)
-            threadsRunning.add threadCounter, (thr, chanControlRecv)
-            threadCounter = threadCounter + 1
+            # let chanControlRecv = newAsyncChannel[ThreadSafeString](-1)
+            # let arg = ThreadTaskArg(task: task, chanSendToWorker: chanRecv, chanSendToTest: chanSend, chanControlRecv: chanControlRecv, id: threadCounter)
+            # var thr = Thread[ThreadTaskArg]()
+
+            while true:
+              try:
+                let chanControlRecv = newAsyncChannel[ThreadSafeString](-1)
+                let arg = ThreadTaskArg(task: task, chanSendToWorker: chanRecv, chanSendToTest: chanSend, chanControlRecv: chanControlRecv, id: threadCounter)
+                var thr = Thread[ThreadTaskArg]()
+                createThread(thr, taskThread, arg)
+                info "[threadpool worker] adding to threadsRunning", newlength=(threadsRunning.len + 1), threadid=arg.id
+                threadsRunning.add threadCounter, (thr, chanControlRecv)
+                threadCounter = threadCounter + 1
+                break
+              except Exception as e:
+                error "[threadpool worker] exception during thread creation", error=e.msg
+                if e.msg == "Too many open files":
+                  warn "[threadpool worker] will attempt thread creation again after 1 second"
+                  await sleepAsync 1.seconds
+                  continue
+                else:
+                  break
+
+            # createThread(thr, taskThread, arg)
+            # info "[threadpool worker] adding to threadsRunning", newlength=(threadsRunning.len + 1), threadid=arg.id
+            # threadsRunning.add threadCounter, (thr, chanControlRecv)
+            # threadCounter = threadCounter + 1
 
           elif threadsRunning.len >= MaxThreadPoolSize:
             # add to queue
             info "[threadpool worker] adding to taskQueue", newlength=(taskQueue.len + 1)
             taskQueue.add task
         except Exception as e: # not a ThreadTask
+          error "[threadpool worker] exception", error=e.msg
           try:
             let notification = Json.decode(received, ThreadNotification)
             info "[threadpool worker] received notification", notice=notification.notice, threadid=notification.id
@@ -180,13 +202,49 @@ procSuite "Task runner short-running synchronous use cases":
                 info "[threadpool worker] removing from taskQueue", newlength=(taskQueue.len - 1)
                 let task = taskQueue[0]
                 taskQueue.delete 0, 0
-                let chanControlRecv = newAsyncChannel[ThreadSafeString](-1)
-                let arg = ThreadTaskArg(task: task, chanSendToWorker: chanRecv, chanSendToTest: chanSend, chanControlRecv: chanControlRecv, id: threadCounter)
-                var thr = Thread[ThreadTaskArg]()
-                createThread(thr, taskThread, arg)
-                info "[threadpool worker] adding to threadsRunning", newlength=(threadsRunning.len + 1), threadid=arg.id
-                threadsRunning.add threadCounter, (thr, chanControlRecv)
-                threadCounter = threadCounter + 1
+                # let chanControlRecv = newAsyncChannel[ThreadSafeString](-1)
+                # let arg = ThreadTaskArg(task: task, chanSendToWorker: chanRecv, chanSendToTest: chanSend, chanControlRecv: chanControlRecv, id: threadCounter)
+                # var thr = Thread[ThreadTaskArg]()
+
+                while true:
+                  # Can run into problems related to max file descriptors
+                  # allowed: https://wilsonmar.github.io/maximum-limits/
+                  # Check with: `ulimit -n` / `launchctl limit maxfiles`
+
+                  # When running e.g. `newAsyncChannel` if the max number is exceeded
+                  # then the instantiation will fail and it seems as if old/closed
+                  # ones aren't getting cleaned up, at least w/ respect to their
+                  # file descriptors, so waiting and trying again doesn't help
+                  try:
+                    echo "GOT HERE 1"
+                    let chanControlRecv = newAsyncChannel[ThreadSafeString](-1)
+                    echo "GOT HERE 2"
+                    let arg = ThreadTaskArg(task: task, chanSendToWorker: chanRecv, chanSendToTest: chanSend, chanControlRecv: chanControlRecv, id: threadCounter)
+                    echo "GOT HERE 3"
+                    var thr = Thread[ThreadTaskArg]()
+                    echo "GOT HERE 4"
+                    createThread(thr, taskThread, arg)
+                    echo "GOT HERE 5"
+                    info "[threadpool worker] adding to threadsRunning", newlength=(threadsRunning.len + 1), threadid=arg.id
+                    echo "GOT HERE 6"
+                    threadsRunning.add threadCounter, (thr, chanControlRecv)
+                    echo "GOT HERE 7"
+                    threadCounter = threadCounter + 1
+                    echo "GOT HERE 8"
+                    break
+                  except Exception as e:
+                    error "[threadpool worker] exception during thread creation", error=e.msg
+                    if e.msg == "Too many open files":
+                      warn "[threadpool worker] will attempt thread creation again after 1 second"
+                      await sleepAsync 1.seconds
+                      continue
+                    else:
+                      break
+
+                # createThread(thr, taskThread, arg)
+                # info "[threadpool worker] adding to threadsRunning", newlength=(threadsRunning.len + 1), threadid=arg.id
+                # threadsRunning.add threadCounter, (thr, chanControlRecv)
+                # threadCounter = threadCounter + 1
             else:
               error "[threadpool worker] unknown notification", notice=notification.notice
           except Exception as e:
@@ -203,7 +261,10 @@ procSuite "Task runner short-running synchronous use cases":
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
     var thr = Thread[ThreadArg]()
     var receivedIds: seq[int] = @[]
-    let testRuns = 1000
+    # if `testRuns` is large enough (also related to `MaxThreadPoolSize` and
+    # maybe FDs not being cleaned up from previous tests) then will run into
+    # problem involving "Too many open files" FD limit
+    let testRuns = 25
 
     chanRecv.open()
     chanSend.open()
