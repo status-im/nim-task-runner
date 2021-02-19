@@ -46,10 +46,9 @@ procSuite "Task runner short-running IO use cases":
         urlSplit = url.split("://")
         id = urlSplit[1]
 
-      if id.parseInt mod 2 == 0:
-        let ms = rand(100..2500)
-        info "[http client worker] sleeping", duration=($ms & "ms")
-        await sleepAsync ms.milliseconds
+      let ms = rand(100..2500)
+      info "[http client worker] sleeping", duration=($ms & "ms")
+      await sleepAsync ms.milliseconds
 
       return "RESPONSE " & id
 
@@ -87,11 +86,10 @@ procSuite "Task runner short-running IO use cases":
           # handle additional concurrent requests
           discard sendRequest(request)
 
-        except:
+        except Exception as e:
+          error "[http client worker] error during task run", msg=e.msg
           if received == "shutdown":
             info "[http client worker] received 'shutdown'"
-            info "[http client worker] sending 'shutdownSuccess'"
-            await chanSend.send("shutdownSuccess".safe)
             info "[http client worker] breaking while loop"
             break
 
@@ -127,10 +125,14 @@ procSuite "Task runner short-running IO use cases":
         let response = Json.decode(received, HttpResponse)
         info "[http client test] received http response", id=response.id, responseLength=response.result.len
         receivedIds.add response.id
-        if receivedIds.len == testRuns:
+        if receivedIds.len == testRuns + 1:
           info "[http client test] sending 'shutdown'"
           await chanSend.send("shutdown".safe)
-      except:
+          shutdown = true
+          info "[http client test] breaking while loop"
+          break
+      except Exception as e:
+        error "[http client test] error during task run", msg=e.msg
         if received == "ready":
           info "[http client test] http client worker is ready"
           info "[http client test] sending requests"
@@ -140,13 +142,10 @@ procSuite "Task runner short-running IO use cases":
             let requestEncode = Json.encode(request)
             await chanSend.send(requestEncode.safe)
 
-        elif received == "shutdownSuccess":
-          info "[http client test] received 'shutdownSuccess'"
-          shutdown = true
-          info "[http client test] breaking while loop"
-          break
         else:
           warn "[http client test] unknown message", message=received
+
+    joinThread(thr)
 
     chanRecv.close()
     chanSend.close()

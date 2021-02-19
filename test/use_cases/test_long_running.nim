@@ -61,8 +61,6 @@ procSuite "Task runner long-running use cases":
             info "[ping-pong worker] received 'c'"
           of "shutdown":
             info "[ping-pong worker] received 'shutdown'"
-            info "[ping-pong worker] sending 'shutdownSuccess'"
-            await chanSend.send("shutdownSuccess".safe)
             info "[ping-pong worker] breaking while loop"
             break
           else: warn "[ping-pong worker] unknown message", message=received
@@ -119,8 +117,6 @@ procSuite "Task runner long-running use cases":
           info "[ping-pong test] received '4'"
           info "[ping-pong test] sending 'shutdown'"
           await chanSend.send("shutdown".safe)
-        of "shutdownSuccess":
-          info "[ping-pong test] received 'shutdownSuccess'"
           shutdown = true
           info "[ping-pong test] breaking while loop"
           break
@@ -133,14 +129,10 @@ procSuite "Task runner long-running use cases":
       info "[ping-pong test] sleeping", duration=($ms & "ms")
       await sleepAsync ms.milliseconds
 
+    joinThread(thr)
+
     chanRecv.close()
     chanSend.close()
-
-    # joinThread(thr)
-
-    # `joinThread` is not necessary here because the `while` loop `break` above
-    # coincides with worker termination, i.e.  we don't need it to prevent the
-    # main thread from exiting while the worker thread is running
 
     check:
       shutdown == true
@@ -244,8 +236,6 @@ procSuite "Task runner long-running use cases":
             info "[waku worker] received 'shutdown'"
             info "[waku worker] stopping waku node"
             await node.stop()
-            info "[waku worker] sending 'shutdownSuccess'"
-            await chanSend.send("shutdownSuccess".safe)
             info "[waku worker] breaking while loop"
             break
           else:
@@ -311,8 +301,6 @@ procSuite "Task runner long-running use cases":
           info "[waku test] received message '2'"
           info "[waku test] sending 'shutdown'"
           await chanSend.send("shutdown".safe)
-        of "shutdownSuccess":
-          info "[waku test] received 'shutdownSuccess'"
           shutdown = true
           info "[waku test] breaking while loop"
           break
@@ -323,14 +311,10 @@ procSuite "Task runner long-running use cases":
       info "[waku test] sleeping", duration=($ms & "ms")
       await sleepAsync ms.milliseconds
 
+    joinThread(thr)
+
     chanRecv.close()
     chanSend.close()
-
-    # joinThread(thr)
-
-    # `joinThread` is not necessary here because the `while` loop `break` above
-    # coincides with worker termination, i.e.  we don't need it to prevent the
-    # main thread from exiting while the worker thread is running
 
     check:
       shutdown == true
