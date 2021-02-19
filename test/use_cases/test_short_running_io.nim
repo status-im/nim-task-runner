@@ -9,13 +9,13 @@
 #  Apache License, version 2.0, (LICENSE-APACHEv2)
 #             MIT license (LICENSE-MIT)
 import # nim libs
-  random, unittest, strutils
+  random, strutils, unittest
 
 import # vendor libs
   chronicles, chronos, json_serialization
 
 import # task-runner libs
-  ../../task_runner, ../test_helpers, ../../task_runner/sys
+  ../../task_runner, ../../task_runner/sys, ../test_helpers
 
 # call randomize() once to initialize the default random number generator else
 # the same results will occur every time these examples are run
@@ -76,7 +76,6 @@ procSuite "Task runner short-running IO use cases":
 
       while true:
         info "[http client worker] waiting for message"
-        # convert cstring back to string to avoid unexpected collection
         let
           receivedCStr = await chanRecv.recv()
           received = $receivedCStr
@@ -118,7 +117,6 @@ procSuite "Task runner short-running IO use cases":
     var shutdown = false
     while true:
       info "[http client test] waiting for message"
-      # convert cstring back to string to avoid unexpected collection
       let
         receivedCStr = await chanRecv.recv()
         received = $receivedCStr
