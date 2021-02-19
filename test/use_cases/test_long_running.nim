@@ -17,7 +17,7 @@ import # vendor libs
   wakunode2], waku/v2/protocol/waku_message, stew/shims/net as stewNet
 
 import # task-runner libs
-  ../../task_runner, ../test_helpers, ../../task_runner/sys
+  ../../task_runner, ../../task_runner/sys, ../test_helpers
 
 # call randomize() once to initialize the default random number generator else
 # the same results will occur every time these examples are run
@@ -48,7 +48,6 @@ procSuite "Task runner long-running use cases":
 
       while true:
         info "[ping-pong worker] waiting for message"
-        # convert cstring back to string to avoid unexpected collection
         let
           receivedCStr = await chanRecv.recv()
           received = $receivedCStr
@@ -95,7 +94,6 @@ procSuite "Task runner long-running use cases":
 
     while true:
       info "[ping-pong test] waiting for message"
-      # convert cstring back to string to avoid unexpected collection
       let
         receivedCStr = await chanRecv.recv()
         received = $receivedCStr
@@ -228,7 +226,6 @@ procSuite "Task runner long-running use cases":
 
       while true:
         info "[waku worker] waiting for message"
-        # convert cstring back to string to avoid unexpected collection
         let
           receivedCStr = await chanRecv.recv()
           received = $receivedCStr
@@ -291,7 +288,6 @@ procSuite "Task runner long-running use cases":
 
     while true:
       info "[waku test] waiting for message"
-      # convert cstring back to string to avoid unexpected collection
       let
         receivedCStr = await chanRecv.recv()
         received = $receivedCStr
@@ -305,6 +301,8 @@ procSuite "Task runner long-running use cases":
           await chanSend.send("subscribe".safe)
           info "[waku test] sending 'publish1'"
           await chanSend.send("publish1".safe)
+        of "counted":
+          info "[waku test] waku worker counted"
         of "1":
           info "[waku test] received message '1'"
           info "[waku test] sending 'publish2'"
@@ -319,10 +317,7 @@ procSuite "Task runner long-running use cases":
           info "[waku test] breaking while loop"
           break
         else:
-          if received == "counted":
-            info "[waku test] waku worker counted"
-          else:
-            warn "[waku test] unknown message", message=received
+          warn "[waku test] unknown message", message=received
 
       let ms = rand(100..250)
       info "[waku test] sleeping", duration=($ms & "ms")

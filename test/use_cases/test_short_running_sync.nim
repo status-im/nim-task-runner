@@ -9,13 +9,13 @@
 #  Apache License, version 2.0, (LICENSE-APACHEv2)
 #             MIT license (LICENSE-MIT)
 import # nim libs
-  random, unittest, tables, strutils, os, sequtils
+  os, random, sequtils, strutils, tables, unittest
 
 import # vendor libs
   chronicles, chronos, json_serialization
 
 import # task-runner libs
-  ../../task_runner, ../test_helpers, ../../task_runner/sys
+  ../../task_runner, ../../task_runner/sys, ../test_helpers
 
 # call randomize() once to initialize the default random number generator else
 # the same results will occur every time these examples are run
@@ -24,9 +24,9 @@ randomize()
 procSuite "Task runner short-running synchronous use cases":
 
   asyncTest "Short-running HTTP experiment":
-    # `sleepAsync` is used in this test to provide (additional) non-determism
-    # in send/recv timing, and also to demonstrate how `await [chan].send`
-    # calls can resolve even when a receiver on another thread is not currently
+    # `sleep` is used in this test to provide (additional) non-determism in
+    # send/recv timing, and also to demonstrate how `await [chan].send` calls
+    # can resolve even when a receiver on another thread is not currently
     # polling the channel with `await [chan].recv`
 
     const MaxThreadPoolSize = 5
@@ -127,7 +127,6 @@ procSuite "Task runner short-running synchronous use cases":
 
       while true:
         info "[threadpool worker] waiting for message"
-        echo threadsRunning.len # keep thread sequence from being GC'd
         let
           receivedCStr = await chanRecv.recv()
           received = $receivedCStr
@@ -216,7 +215,6 @@ procSuite "Task runner short-running synchronous use cases":
     var shutdown = false
     while true:
       info "[threadpool test] waiting for message"
-      # convert cstring back to string to avoid unexpected collection
       let
         receivedCStr = await chanRecv.recv()
         received = $receivedCStr
