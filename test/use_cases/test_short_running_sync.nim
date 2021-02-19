@@ -62,10 +62,9 @@ procSuite "Task runner short-running synchronous use cases":
         urlSplit = url.split("://")
         id = urlSplit[1]
 
-      if id.parseInt mod 2 == 0:
-        let ms = rand(100..250)
-        info "[threadpool task] sleeping", duration=($ms & "ms")
-        sleep ms
+      let ms = rand(100..2500)
+      info "[threadpool task] sleeping", duration=($ms & "ms")
+      sleep ms
 
       return "RESPONSE " & id
 
@@ -134,8 +133,6 @@ procSuite "Task runner short-running synchronous use cases":
         info "[threadpool worker] received message", message=received
         if received == "shutdown":
           info "[threadpool worker] received 'shutdown'"
-          info "[threadpool worker] sending 'shutdownSuccess'"
-          await chanSend.send("shutdownSuccess".safe)
           info "[threadpool worker] breaking while loop"
           break
 
@@ -223,10 +220,14 @@ procSuite "Task runner short-running synchronous use cases":
         let response = Json.decode(received, HttpResponse)
         info "[threadpool test] received http response", id=response.id, response=response.result
         receivedIds.add response.id
-        if receivedIds.len == testRuns:
+        if receivedIds.len == testRuns + 1:
           info "[threadpool test] sending 'shutdown'"
           await chanSend.send("shutdown".safe)
-      except:
+          shutdown = true
+          info "[threadpool test] breaking while loop"
+          break
+      except Exception as e:
+        error "[threadpool test] exception", error=e.msg
         if received == "ready":
           info "[threadpool test] received 'ready'"
           for i in 0..testRuns:
@@ -236,13 +237,10 @@ procSuite "Task runner short-running synchronous use cases":
               taskEncoded = Json.encode(task)
             await chanSend.send(taskEncoded.safe)
 
-        elif received == "shutdownSuccess":
-          info "[threadpool test] received 'shutdownSuccess'"
-          shutdown = true
-          info "[threadpool test] breaking while loop"
-          break
         else:
           warn "[threadpool test] unknown message", message=received
+
+    joinThread(thr)
 
     chanRecv.close()
     chanSend.close()
