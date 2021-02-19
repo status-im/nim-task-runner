@@ -41,16 +41,17 @@ procSuite "Task runner short-running IO use cases":
         result: string
       AsyncHttpClient = object
 
-    proc getContent(asyncHttpClient: AsyncHttpClient, url: string): Future[string] {.async.} =
-      case url
-        of "https://1":
-          return "RESPONSE 1"
-        of "https://2":
-          let ms = rand(500..1000)
-          await sleepAsync ms.milliseconds
-          return "RESPONSE 2"
-        of "https://3":
-          return "RESPONSE 3"
+    proc getContent(httpClient: AsyncHttpClient, url: string): Future[string] {.async.} =
+      let
+        urlSplit = url.split("://")
+        id = urlSplit[1]
+
+      if id.parseInt mod 2 == 0:
+        let ms = rand(100..2500)
+        info "[http client worker] sleeping", duration=($ms & "ms")
+        await sleepAsync ms.milliseconds
+
+      return "RESPONSE " & id
 
     proc worker(arg: ThreadArg) {.async.} =
       let chanRecv = arg.chanRecv
@@ -108,6 +109,7 @@ procSuite "Task runner short-running IO use cases":
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
     var thr = Thread[ThreadArg]()
     var receivedIds: seq[int] = @[]
+    let testRuns = 10000
 
     chanRecv.open()
     chanSend.open()
@@ -127,7 +129,7 @@ procSuite "Task runner short-running IO use cases":
         let response = Json.decode(received, HttpResponse)
         info "[http client test] received http response", id=response.id, responseLength=response.result.len
         receivedIds.add response.id
-        if receivedIds.len == 3:
+        if receivedIds.len == testRuns:
           info "[http client test] sending 'shutdown'"
           await chanSend.send("shutdown".safe)
       except:
@@ -135,17 +137,10 @@ procSuite "Task runner short-running IO use cases":
           info "[http client test] http client worker is ready"
           info "[http client test] sending requests"
 
-          let request1 = HttpRequest(id: 1, url: "https://1")
-          let request1Encode = Json.encode(request1)
-          await chanSend.send(request1Encode.safe)
-
-          let request2 = HttpRequest(id: 2, url: "https://2")
-          let request2Encode = Json.encode(request2)
-          await chanSend.send(request2Encode.safe)
-
-          let request3 = HttpRequest(id: 3, url: "https://3")
-          let request3Encode = Json.encode(request3)
-          await chanSend.send(request3Encode.safe)
+          for i in 0..testRuns:
+            let request = HttpRequest(id: i, url: "https://" & $i)
+            let requestEncode = Json.encode(request)
+            await chanSend.send(requestEncode.safe)
 
         elif received == "shutdownSuccess":
           info "[http client test] received 'shutdownSuccess'"

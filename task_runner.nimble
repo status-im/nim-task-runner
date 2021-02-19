@@ -27,6 +27,7 @@ proc buildAndRunTest(name: string,
     " --define:chronicles_line_numbers" &
     " --define:debug" &
     " --define:ssl" &
+    # " --define:useMalloc" &
     " --linetrace:on" &
     " --nimcache:nimcache/test/" & name &
     " --out:" & outDir & name &
