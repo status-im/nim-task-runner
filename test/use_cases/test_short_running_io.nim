@@ -15,7 +15,7 @@ import # vendor libs
   chronicles, chronos, json_serialization
 
 import # task-runner libs
-  ../../task_runner, ../../task_runner/sys, ../test_helpers
+  ../../task_runner, ../test_helpers
 
 # call randomize() once to initialize the default random number generator else
 # the same results will occur every time these examples are run
