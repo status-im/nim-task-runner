@@ -30,7 +30,7 @@ procSuite "Task runner short-running synchronous use cases":
     # can resolve even when a receiver on another thread is not currently
     # polling the channel with `await [chan].recv`
 
-    const MaxThreadPoolSize = 5
+    const MaxThreadPoolSize = 2
 
     type
       HttpRequest = object
@@ -263,7 +263,7 @@ procSuite "Task runner short-running synchronous use cases":
     # if `testRuns` is large enough (also related to `MaxThreadPoolSize` and
     # maybe FDs not being cleaned up from previous tests) then will run into
     # problem involving "Too many open files" FD limit
-    let testRuns = 25
+    let testRuns = 10
 
     chanRecv.open()
     chanSend.open()

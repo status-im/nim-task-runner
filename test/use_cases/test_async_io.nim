@@ -105,7 +105,7 @@ procSuite "Task runner async I/O use cases":
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
     var thr = Thread[ThreadArg]()
     var receivedIds: seq[int] = @[]
-    let testRuns = 10000
+    let testRuns = 100
 
     chanRecv.open()
     chanSend.open()
