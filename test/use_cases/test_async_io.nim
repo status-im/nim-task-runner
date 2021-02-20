@@ -21,10 +21,11 @@ import # task-runner libs
 # the same results will occur every time these examples are run
 randomize()
 
-procSuite "Task runner short-running IO use cases":
+procSuite "Task runner async I/O use cases":
 
-  asyncTest "Short-running HTTP experiment":
-    # `sleepAsync` is used in this test to provide (additional) non-determism
+  asyncTest "Async HTTP requests":
+
+    # `sleepAsync` is used in this test to provide (additional) non-determinism
     # in send/recv timing, and also to demonstrate how `await [chan].send`
     # calls can resolve even when a receiver on another thread is not currently
     # polling the channel with `await [chan].recv`
