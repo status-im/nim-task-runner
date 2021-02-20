@@ -25,9 +25,9 @@ randomize()
 
 procSuite "Task runner long-running use cases":
 
-  asyncTest "Long-running ping-pong experiment":
+  asyncTest "Ping-pong":
 
-    # `sleepAsync` is used in this test to provide (additional) non-determism
+    # `sleepAsync` is used in this test to provide (additional) non-determinism
     # in send/recv timing, and also to demonstrate how `await [chan].send`
     # calls can resolve even when a receiver on another thread is not currently
     # polling the channel with `await [chan].recv`
@@ -118,12 +118,12 @@ procSuite "Task runner long-running use cases":
       shutdown == true
 
 
-  asyncTest "Long-running Waku v2 node":
+  asyncTest "Waku v2 node":
 
     # `counter` procs are used in this test to demonstrate concurrency within
     # independent event loops running on different threads
 
-    # `sleepAsync` is used in this test to provide (additional) non-determism
+    # `sleepAsync` is used in this test to provide (additional) non-determinism
     # in send/recv timing and counter operations, and also to demonstrate how
     # `await [chan].send` calls can resolve even when a receiver on another
     # thread is not currently polling the channel with `await [chan].recv`

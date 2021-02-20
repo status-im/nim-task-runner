@@ -23,8 +23,9 @@ randomize()
 
 procSuite "Task runner short-running synchronous use cases":
 
-  asyncTest "Short-running HTTP experiment":
-    # `sleep` is used in this test to provide (additional) non-determism in
+  asyncTest "HTTP requests":
+
+    # `sleep` is used in this test to provide (additional) non-determinism in
     # send/recv timing, and also to demonstrate how `await [chan].send` calls
     # can resolve even when a receiver on another thread is not currently
     # polling the channel with `await [chan].recv`

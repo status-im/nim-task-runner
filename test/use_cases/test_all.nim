@@ -15,6 +15,6 @@
 # whatever test follows the waku test.
 
 import
-  ./test_short_running_io,
+  ./test_async_io.nim,
   ./test_short_running_sync,
   ./test_long_running
