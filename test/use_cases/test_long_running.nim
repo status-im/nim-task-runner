@@ -48,9 +48,7 @@ procSuite "Task runner long-running use cases":
 
       while true:
         info "[ping-pong worker] waiting for message"
-        let
-          receivedCStr = await chanRecv.recv()
-          received = $receivedCStr
+        let received = $(await chanRecv.recv())
 
         case received
           of "a":
@@ -92,9 +90,7 @@ procSuite "Task runner long-running use cases":
 
     while true:
       info "[ping-pong test] waiting for message"
-      let
-        receivedCStr = await chanRecv.recv()
-        received = $receivedCStr
+      let received = $(await chanRecv.recv())
 
       case received
         of "ready":
@@ -218,9 +214,7 @@ procSuite "Task runner long-running use cases":
 
       while true:
         info "[waku worker] waiting for message"
-        let
-          receivedCStr = await chanRecv.recv()
-          received = $receivedCStr
+        let received = $(await chanRecv.recv())
 
         case received
           of "subscribe":
@@ -278,9 +272,7 @@ procSuite "Task runner long-running use cases":
 
     while true:
       info "[waku test] waiting for message"
-      let
-        receivedCStr = await chanRecv.recv()
-        received = $receivedCStr
+      let received = $(await chanRecv.recv())
 
       case received
         of "ready":

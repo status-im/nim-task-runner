@@ -126,9 +126,7 @@ procSuite "Task runner short-running synchronous use cases":
 
       while true:
         info "[threadpool worker] waiting for message"
-        let
-          receivedCStr = await chanRecv.recv()
-          received = $receivedCStr
+        let received = $(await chanRecv.recv())
 
         info "[threadpool worker] received message", message=received
         if received == "shutdown":
@@ -274,9 +272,7 @@ procSuite "Task runner short-running synchronous use cases":
 
     while true:
       info "[threadpool test] waiting for message"
-      let
-        receivedCStr = await chanRecv.recv()
-        received = $receivedCStr
+      let received = $(await chanRecv.recv())
 
       try:
         let response = Json.decode(received, HttpResponse)
