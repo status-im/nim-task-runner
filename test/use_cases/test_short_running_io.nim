@@ -75,9 +75,7 @@ procSuite "Task runner short-running IO use cases":
 
       while true:
         info "[http client worker] waiting for message"
-        let
-          receivedCStr = await chanRecv.recv()
-          received = $receivedCStr
+        let received = $(await chanRecv.recv())
 
         try:
           let request = Json.decode(received, HttpRequest)
@@ -116,9 +114,7 @@ procSuite "Task runner short-running IO use cases":
 
     while true:
       info "[http client test] waiting for message"
-      let
-        receivedCStr = await chanRecv.recv()
-        received = $receivedCStr
+      let received = $(await chanRecv.recv())
 
       info "[http client test] received message", message=received
 
