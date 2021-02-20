@@ -113,6 +113,7 @@ procSuite "Task runner short-running IO use cases":
     createThread(thr, workerThread, arg)
 
     var shutdown = false
+
     while true:
       info "[http client test] waiting for message"
       let

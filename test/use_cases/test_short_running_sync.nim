@@ -271,6 +271,7 @@ procSuite "Task runner short-running synchronous use cases":
     createThread(thr, workerThread, arg)
 
     var shutdown = false
+
     while true:
       info "[threadpool test] waiting for message"
       let
