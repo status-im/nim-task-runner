@@ -60,7 +60,7 @@ procSuite "Task runner long-running use cases":
             info "[ping-pong worker] sending message", message=received
             await chanSend.send(received.safe)
 
-        let ms = rand(10..100)
+        let ms = rand(1..10)
         info "[ping-pong worker] sleeping", duration=($ms & "ms")
         await sleepAsync ms.milliseconds
 
@@ -96,16 +96,16 @@ procSuite "Task runner long-running use cases":
             count=receivedCount
           if receivedCount == testRuns:
             info "[ping-pong test] sending 'shutdown'"
-            await chanSend.send("shutdown".safe)
+            chanSend.sendSync("shutdown".safe)
             shutdown = true
             info "[ping-pong test] breaking while loop"
             break
 
-      let message = $rand(0..testRuns)
-      info "[ping-pong test] sending random message", message=message
+      let message = $(receivedCount + 1)
+      info "[ping-pong test] sending message", message=message
       await chanSend.send(message.safe)
 
-      let ms = rand(10..100)
+      let ms = rand(1..10)
       info "[ping-pong test] sleeping", duration=($ms & "ms")
       await sleepAsync ms.milliseconds
 
@@ -158,10 +158,10 @@ procSuite "Task runner long-running use cases":
         var count = 0
         while true:
           count = count + 1
-          info "[waku worker counter] counting", count=count
+          info "[waku worker counter] counting", counter=count
           await chanSend.send("counted".safe)
 
-          let ms = rand(100..1000)
+          let ms = rand(100..250)
           info "[waku worker counter] sleeping", duration=($ms & "ms")
           await sleepAsync ms.milliseconds
 
@@ -174,8 +174,17 @@ procSuite "Task runner long-running use cases":
         info "[waku handler] sending message", message=payload
         await chanSend.send(payload.safe)
 
-      proc makeMessage(s: string): WakuMessage =
+      proc makeWakuMessage(s: string): WakuMessage =
         WakuMessage(payload: cast[seq[byte]](s), contentTopic: ContentTopic(1))
+
+      proc publisher(node: WakuNode, topic: string, message: string) {.async.} =
+        let ms = rand(10..250)
+        info "[waku worker publisher] sleeping", duration=($ms & "ms"),
+          message=message
+        await sleepAsync ms.milliseconds
+
+        info "[waku worker publisher] publishing message", message=message
+        await node.publish(topic, makeWakuMessage(message))
 
       let topic = "testing"
 
@@ -201,12 +210,8 @@ procSuite "Task runner long-running use cases":
             info "[waku worker] breaking while loop"
             break
           else:
-            info "[waku worker] publishing message", message=received
-            await node.publish(topic, makeMessage(received))
-
-        let ms = rand(10..100)
-        info "[waku worker] sleeping", duration=($ms & "ms")
-        await sleepAsync ms.milliseconds
+            info "[waku worker] received message", message=received
+            discard publisher(node, topic, received)
 
       chanRecv.close()
       chanSend.close()
@@ -227,11 +232,21 @@ procSuite "Task runner long-running use cases":
       var count = 0
       while true:
         count = count + 1
-        info "[waku test counter] counting", count=count
+        info "[waku test counter] counting", counter=count
         await chanSend.send("counted".safe)
 
-        let ms = rand(100..1000)
+        let ms = rand(100..250)
         info "[waku test counter] sleeping", duration=($ms & "ms")
+        await sleepAsync ms.milliseconds
+
+    proc sender(n: int) {.async.} =
+      for i in 1..n:
+        let message = $i
+        info "[waku test sender] sending message", message=message
+        await chanSend.send(message.safe)
+
+        let ms = rand(10..100)
+        info "[waku test sender] sleeping", duration=($ms & "ms")
         await sleepAsync ms.milliseconds
 
     let testRuns = 100
@@ -249,9 +264,7 @@ procSuite "Task runner long-running use cases":
           discard counter()
           info "[waku test] sending 'subscribe'"
           await chanSend.send("subscribe".safe)
-          let message = $rand(0..testRuns)
-          info "[waku test] sending random message", message=message
-          await chanSend.send(message.safe)
+          discard sender(testRuns)
         of "counted":
           info "[waku test] waku worker counted"
         else:
@@ -261,18 +274,10 @@ procSuite "Task runner long-running use cases":
 
           if receivedCount == testRuns:
             info "[waku test] sending 'shutdown'"
-            await chanSend.send("shutdown".safe)
+            chanSend.sendSync("shutdown".safe)
             shutdown = true
             info "[waku test] breaking while loop"
             break
-
-          let message = $rand(0..testRuns)
-          info "[waku test] sending random message", message=message
-          await chanSend.send(message.safe)
-
-      let ms = rand(10..100)
-      info "[waku test] sleeping", duration=($ms & "ms")
-      await sleepAsync ms.milliseconds
 
     joinThread(thr)
 

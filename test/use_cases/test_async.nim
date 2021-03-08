@@ -21,9 +21,9 @@ import # task-runner libs
 # the same results will occur every time these examples are run
 randomize()
 
-procSuite "Task runner async I/O use cases":
+procSuite "Task runner asynchronous use cases":
 
-  asyncTest "Async HTTP requests":
+  asyncTest "Asynchronous HTTP requests":
 
     # `sleepAsync` is used in this test to provide (additional) non-determinism
     # in send/recv timing, and also to demonstrate how `await [chan].send`
@@ -31,27 +31,30 @@ procSuite "Task runner async I/O use cases":
     # polling the channel with `await [chan].recv`
 
     type
-      ThreadArg = object
-        chanRecv: AsyncChannel[ThreadSafeString]
-        chanSend: AsyncChannel[ThreadSafeString]
+      AsyncHttpClient = object
       HttpRequest = object
         id: int
         url: string
       HttpResponse = object
         id: int
-        result: string
-      AsyncHttpClient = object
+        content: string
+      ThreadArg = object
+        chanRecv: AsyncChannel[ThreadSafeString]
+        chanSend: AsyncChannel[ThreadSafeString]
 
-    proc getContent(httpClient: AsyncHttpClient, url: string): Future[string] {.async.} =
+    proc getContent(httpClient: AsyncHttpClient, url: string):
+                   Future[string] {.async.} =
       let
         urlSplit = url.split("://")
         id = urlSplit[1]
 
-      let ms = rand(100..2500)
-      info "[http client worker] sleeping", duration=($ms & "ms")
+      let ms = rand(10..250)
+      info "[http client] sleeping", duration=($ms & "ms"), id=id, url=url
       await sleepAsync ms.milliseconds
 
-      return "RESPONSE " & id
+      let response = "RESPONSE " & id
+      info "[http client] responding", id=id, response=response
+      return response
 
     proc worker(arg: ThreadArg) {.async.} =
       let chanRecv = arg.chanRecv
@@ -62,13 +65,15 @@ procSuite "Task runner async I/O use cases":
       let client = AsyncHttpClient()
 
       proc sendRequest(request: HttpRequest) {.async.} =
-        # fire off http request
-        # info "[http client worker] sending request to url", id=request.id, url=request.url
+        info "[http client worker] sending request", id=request.id,
+          url=request.url
         let responseStr = await client.getContent(request.url)
-        # info "[http client worker] received response for request", id=request.id, response=responseStr
-        # send response back on the channel
-        let response = HttpResponse(id: request.id, result: responseStr)
+        info "[http client worker] received response for request",
+          id=request.id, response=responseStr
+        let response = HttpResponse(id: request.id, content: responseStr)
         let responseEncoded = Json.encode(response)
+        info "[http client worker] sending response", id=request.id,
+          encoded=responseEncoded
         await chanSend.send(responseEncoded.safe)
 
       info "[http client worker] sending 'ready'"
@@ -80,13 +85,13 @@ procSuite "Task runner async I/O use cases":
 
         try:
           let request = Json.decode(received, HttpRequest)
-          info "[http client worker] received request for URL", url=request.url
+          info "[http client worker] received request", id=request.id,
+            url=request.url
           # do not await as we don't want to park the while loop, so we can
           # handle additional concurrent requests
           discard sendRequest(request)
 
         except Exception as e:
-          error "[http client worker] error during task run", msg=e.msg
           if received == "shutdown":
             info "[http client worker] received 'shutdown'"
             info "[http client worker] breaking while loop"
@@ -104,41 +109,48 @@ procSuite "Task runner async I/O use cases":
     let chanSend = newAsyncChannel[ThreadSafeString](-1)
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
     var thr = Thread[ThreadArg]()
-    var receivedIds: seq[int] = @[]
-    let testRuns = 100
 
     chanRecv.open()
     chanSend.open()
     createThread(thr, workerThread, arg)
 
+    proc sender(n: int) {.async.} =
+      for i in 1..n:
+        let request = HttpRequest(id: i, url: "https://" & $i)
+        let requestEncode = Json.encode(request)
+        info "[http client test sender] sending request", id=request.id,
+          url=request.url
+        await chanSend.send(requestEncode.safe)
+
+        let ms = rand(1..25)
+        info "[http client test sender] sleeping", duration=($ms & "ms")
+        await sleepAsync ms.milliseconds
+
+    let testRuns = 100
+    var receivedCount = 0
     var shutdown = false
 
     while true:
       info "[http client test] waiting for message"
       let received = $(await chanRecv.recv())
 
-      info "[http client test] received message", message=received
-
       try: # try to decode HttpResponse
         let response = Json.decode(received, HttpResponse)
-        info "[http client test] received http response", id=response.id, responseLength=response.result.len
-        receivedIds.add response.id
-        if receivedIds.len == testRuns + 1:
+        receivedCount = receivedCount + 1
+        info "[http client test] received response", id=response.id,
+          content=response.content, count=receivedCount
+        if receivedCount == testRuns:
           info "[http client test] sending 'shutdown'"
-          await chanSend.send("shutdown".safe)
+          echo "ARE WE HERE YET"
+          chanSend.sendSync("shutdown".safe)
+          # await chanSend.send("shutdown".safe)
           shutdown = true
           info "[http client test] breaking while loop"
           break
       except Exception as e:
-        error "[http client test] error during task run", msg=e.msg
         if received == "ready":
           info "[http client test] http client worker is ready"
-          info "[http client test] sending requests"
-
-          for i in 0..testRuns:
-            let request = HttpRequest(id: i, url: "https://" & $i)
-            let requestEncode = Json.encode(request)
-            await chanSend.send(requestEncode.safe)
+          discard sender(testRuns)
 
         else:
           warn "[http client test] unknown message", message=received
