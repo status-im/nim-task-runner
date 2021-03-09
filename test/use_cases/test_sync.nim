@@ -30,7 +30,7 @@ procSuite "Task runner synchronous use cases":
     # can resolve even when a receiver on another thread is not currently
     # polling the channel with `await [chan].recv`
 
-    const MaxThreadPoolSize = 8
+    const MaxThreadPoolSize = 16
 
     type
       HttpClient = object
@@ -53,16 +53,15 @@ procSuite "Task runner synchronous use cases":
         chanControlRecv: AsyncChannel[ThreadSafeString]
         chanSendToTest: AsyncChannel[ThreadSafeString]
         chanSendToWorker: AsyncChannel[ThreadSafeString]
-        # task: ThreadTask
 
     proc getContent(httpClient: HttpClient, url: string): string =
       let
         urlSplit = url.split("://")
         id = urlSplit[1]
 
-      # let ms = rand(10..250)
-      # info "[http client] sleeping", duration=($ms & "ms"), id=id, url=url
-      # sleep ms
+      let ms = rand(10..250)
+      info "[http client] sleeping", duration=($ms & "ms"), id=id, url=url
+      sleep ms
 
       let response = "RESPONSE " & id
       info "[http client] responding", id=id, response=response
@@ -129,36 +128,39 @@ procSuite "Task runner synchronous use cases":
     proc worker(arg: ThreadArg) {.async.} =
       let chanRecv = arg.chanRecv
       let chanSend = arg.chanSend
-      var threadsRunning = newTable[int, tuple[thr: Thread[ThreadTaskArg],
+      var threadsBusy = newTable[int, tuple[thr: Thread[ThreadTaskArg],
         chanControlRecv: AsyncChannel[ThreadSafeString]]]()
-      var threadsAvailable: seq[tuple[id: int, thr: Thread[ThreadTaskArg],
-        chanControlRecv: AsyncChannel[ThreadSafeString]]] = @[]
+      var threadsIdle = newSeq[tuple[id: int, thr: Thread[ThreadTaskArg],
+        chanControlRecv: AsyncChannel[ThreadSafeString]]](MaxThreadPoolSize)
       var taskQueue: seq[ThreadTask] = @[] # FIFO queue
       var allReady = 0
       chanRecv.open()
       chanSend.open()
 
-      for i in 1..MaxThreadPoolSize:
+      for i in 0..<MaxThreadPoolSize:
+        let id = i + 1
         let chanControlRecv = newAsyncChannel[ThreadSafeString](-1)
         chanControlRecv.open()
-        let arg = ThreadTaskArg(chanSendToWorker: chanRecv,
-          chanSendToTest: chanSend, chanControlRecv: chanControlRecv,
-          id: i)
-        var thr = Thread[ThreadTaskArg]()
-        createThread(thr, taskThread, arg)
-        info "[threadpool worker] adding to threadsAvailable",
-          newlength=(threadsAvailable.len + 1), threadid=i
-        threadsAvailable.add (i, thr, chanControlRecv)
+        info "[threadpool worker] adding to threadsIdle", threadid=id
+        threadsIdle[i].id = id
+        createThread(
+          threadsIdle[i].thr,
+          taskThread,
+          ThreadTaskArg(id: id, chanControlRecv: chanControlRecv,
+            chanSendToTest: chanSend, chanSendToWorker: chanRecv
+          )
+        )
+        threadsIdle[i].chanControlRecv = chanControlRecv
 
-      # if task received and number running threads == MaxThreadPoolSize,
+      # when task received and number of busy threads == MaxThreadPoolSize,
       # then put the task in a queue
 
-      # if task received and number running threads < MaxThreadPoolSize, pop a
-      # thread from threadsAvailable, track thread in threadsRunning, and run
+      # when task received and number of busy threads < MaxThreadPoolSize, pop
+      # a thread from threadsIdle, track that thread in threadsBusy, and run
       # task in that thread
 
-      # if thread "done" received, remove thread from threadsRunning, and push
-      # thread into threadsAvailable
+      # if "done" received from a thread, remove thread from threadsBusy, and
+      # push thread into threadsIdle
 
       info "[threadpool worker] sending 'ready'"
       await chanSend.send("ready".safe)
@@ -170,11 +172,9 @@ procSuite "Task runner synchronous use cases":
         if received == "shutdown":
           info "[threadpool worker] received 'shutdown'"
           info "[threadpool work] sending 'shutdown' to all task threads"
-          # will need to send "shutdown" message to combined seq of
-          # threadsAvailable + seq from threadsRunning
-          for tpl in threadsAvailable:
+          for tpl in threadsIdle:
             await tpl.chanControlRecv.send("shutdown".safe)
-          for tpl in threadsRunning.values:
+          for tpl in threadsBusy.values:
             await tpl.chanControlRecv.send("shutdown".safe)
           info "[threadpool worker] breaking while loop"
           break
@@ -183,14 +183,14 @@ procSuite "Task runner synchronous use cases":
           var task = Json.decode(received, ThreadTask)
           info "[threadpool worker] received task", url=task.request.url
 
-          if allReady < MaxThreadPoolSize or threadsRunning.len == MaxThreadPoolSize:
+          if allReady < MaxThreadPoolSize or threadsBusy.len == MaxThreadPoolSize:
             # add to queue
             info "[threadpool worker] adding to taskQueue",
               newlength=(taskQueue.len + 1)
             taskQueue.add task
 
           # do we have available threads in the threadpool?
-          elif threadsRunning.len < MaxThreadPoolSize:
+          elif threadsBusy.len < MaxThreadPoolSize:
             # check if we have tasks waiting on queue
             if taskQueue.len > 0:
               # remove first element from the task queue
@@ -202,13 +202,13 @@ procSuite "Task runner synchronous use cases":
               task = taskQueue[0]
               taskQueue.delete 0, 0
 
-            info "[threadpool worker] removing from threadsAvailable",
-              newlength=(threadsAvailable.len - 1)
-            let tpl = threadsAvailable[0]
-            threadsAvailable.delete 0, 0
-            info "[threadpool worker] adding to threadsRunning",
-              newlength=(threadsRunning.len + 1), threadid=tpl.id
-            threadsRunning.add tpl.id, (tpl.thr, tpl.chanControlRecv)
+            info "[threadpool worker] removing from threadsIdle",
+              newlength=(threadsIdle.len - 1)
+            let tpl = threadsIdle[0]
+            threadsIdle.delete 0, 0
+            info "[threadpool worker] adding to threadsBusy",
+              newlength=(threadsBusy.len + 1), threadid=tpl.id
+            threadsBusy.add tpl.id, (tpl.thr, tpl.chanControlRecv)
             await tpl.chanControlRecv.send(received.safe)
         except Exception as e: # not a ThreadTask
           try:
@@ -219,13 +219,13 @@ procSuite "Task runner synchronous use cases":
               info "[threadpool worker] received 'ready' from a task thread"
               allReady = allReady + 1
             elif notification.notice == "done":
-              let tpl = threadsRunning[notification.id]
-              info "[threadpool worker] adding to threadsAvailable",
-                  newlength=(threadsAvailable.len + 1)
-              threadsAvailable.add (notification.id, tpl.thr, tpl.chanControlRecv)
-              info "[threadpool worker] removing from threadsRunning",
-                newlength=(threadsRunning.len - 1), threadid=notification.id
-              threadsRunning.del notification.id
+              let tpl = threadsBusy[notification.id]
+              info "[threadpool worker] adding to threadsIdle",
+                  newlength=(threadsIdle.len + 1)
+              threadsIdle.add (notification.id, tpl.thr, tpl.chanControlRecv)
+              info "[threadpool worker] removing from threadsBusy",
+                newlength=(threadsBusy.len - 1), threadid=notification.id
+              threadsBusy.del notification.id
 
               if taskQueue.len > 0:
                 info "[threadpool worker] removing from taskQueue",
@@ -233,13 +233,13 @@ procSuite "Task runner synchronous use cases":
                 let task = taskQueue[0]
                 taskQueue.delete 0, 0
 
-                info "[threadpool worker] removing from threadsAvailable",
-                  newlength=(threadsAvailable.len - 1)
-                let tpl = threadsAvailable[0]
-                threadsAvailable.delete 0, 0
-                info "[threadpool worker] adding to threadsRunning",
-                  newlength=(threadsRunning.len + 1), threadid=tpl.id
-                threadsRunning.add tpl.id, (tpl.thr, tpl.chanControlRecv)
+                info "[threadpool worker] removing from threadsIdle",
+                  newlength=(threadsIdle.len - 1)
+                let tpl = threadsIdle[0]
+                threadsIdle.delete 0, 0
+                info "[threadpool worker] adding to threadsBusy",
+                  newlength=(threadsBusy.len + 1), threadid=tpl.id
+                threadsBusy.add tpl.id, (tpl.thr, tpl.chanControlRecv)
                 await tpl.chanControlRecv.send(Json.encode(task).safe)
 
             else:
@@ -247,11 +247,19 @@ procSuite "Task runner synchronous use cases":
           except Exception as e:
             warn "[threadpool worker] unknown message", message=received, error=e.msg
 
-      # will need to joinThreads(combined seq of threadsAvailable + seq from
-      # threadsRunning)
+      var allTaskThreads: seq[Thread[ThreadTaskArg]] = @[]
+
+      for tpl in threadsIdle:
+        tpl.chanControlRecv.close()
+        allTaskThreads.add tpl.thr
+      for tpl in threadsBusy.values:
+        tpl.chanControlRecv.close()
+        allTaskThreads.add tpl.thr
 
       chanRecv.close()
       chanSend.close()
+
+      joinThreads(allTaskThreads)
 
     proc workerThread(arg: ThreadArg) {.thread.} =
       waitFor worker(arg)
@@ -292,7 +300,6 @@ procSuite "Task runner synchronous use cases":
         receivedCount = receivedCount + 1
         info "[threadpool test] received response", id=response.id,
           content=response.content, count=receivedCount
-        echo "RECEIVED COUNT: " & $receivedCount
         if receivedCount == testRuns:
           info "[threadpool test] sending 'shutdown'"
           await chanSend.send("shutdown".safe)
