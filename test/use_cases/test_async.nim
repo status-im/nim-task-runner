@@ -126,7 +126,7 @@ procSuite "Task runner asynchronous use cases":
         info "[http client test sender] sleeping", duration=($ms & "ms")
         await sleepAsync ms.milliseconds
 
-    let testRuns = 100
+    let testRuns = 10000
     var receivedCount = 0
     var shutdown = false
 
@@ -141,9 +141,7 @@ procSuite "Task runner asynchronous use cases":
           content=response.content, count=receivedCount
         if receivedCount == testRuns:
           info "[http client test] sending 'shutdown'"
-          echo "ARE WE HERE YET"
-          chanSend.sendSync("shutdown".safe)
-          # await chanSend.send("shutdown".safe)
+          await chanSend.send("shutdown".safe)
           shutdown = true
           info "[http client test] breaking while loop"
           break
@@ -155,10 +153,10 @@ procSuite "Task runner asynchronous use cases":
         else:
           warn "[http client test] unknown message", message=received
 
-    joinThread(thr)
-
     chanRecv.close()
     chanSend.close()
+
+    joinThread(thr)
 
     check:
       shutdown == true
