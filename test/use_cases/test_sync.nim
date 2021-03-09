@@ -287,7 +287,7 @@ procSuite "Task runner synchronous use cases":
         info "[threadpool test sender] sleeping", duration=($ms & "ms")
         await sleepAsync ms.milliseconds
 
-    let testRuns = 1000
+    let testRuns = 100
     var receivedCount = 0
     var shutdown = false
 

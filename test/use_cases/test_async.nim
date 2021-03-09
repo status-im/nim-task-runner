@@ -126,7 +126,7 @@ procSuite "Task runner asynchronous use cases":
         info "[http client test sender] sleeping", duration=($ms & "ms")
         await sleepAsync ms.milliseconds
 
-    let testRuns = 10000
+    let testRuns = 100
     var receivedCount = 0
     var shutdown = false
 
