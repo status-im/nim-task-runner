@@ -30,7 +30,7 @@ procSuite "Task runner synchronous use cases":
     # can resolve even when a receiver on another thread is not currently
     # polling the channel with `await [chan].recv`
 
-    const MaxThreadPoolSize = 5
+    const MaxThreadPoolSize = 8
 
     type
       HttpClient = object
@@ -53,16 +53,16 @@ procSuite "Task runner synchronous use cases":
         chanControlRecv: AsyncChannel[ThreadSafeString]
         chanSendToTest: AsyncChannel[ThreadSafeString]
         chanSendToWorker: AsyncChannel[ThreadSafeString]
-        task: ThreadTask
+        # task: ThreadTask
 
     proc getContent(httpClient: HttpClient, url: string): string =
       let
         urlSplit = url.split("://")
         id = urlSplit[1]
 
-      let ms = rand(10..250)
-      info "[http client] sleeping", duration=($ms & "ms"), id=id, url=url
-      sleep ms
+      # let ms = rand(10..250)
+      # info "[http client] sleeping", duration=($ms & "ms"), id=id, url=url
+      # sleep ms
 
       let response = "RESPONSE " & id
       info "[http client] responding", id=id, response=response
@@ -73,31 +73,51 @@ procSuite "Task runner synchronous use cases":
       arg.chanSendToTest.open()
       arg.chanSendToWorker.open()
 
-      info "[threadpool task] initiating task", url=arg.task.request.url,
-        threadid=arg.id
+      let
+        noticeToWorker = ThreadNotification(id: arg.id, notice: "ready")
+        noticeToWorkerEncode = Json.encode(noticeToWorker)
+      info "[threadpool task thread] sending 'ready'", threadid=arg.id
+      await arg.chanSendToWorker.send(noticeToWorkerEncode.safe)
 
-      try:
-        let
-          client = HttpClient()
-          responseStr = client.getContent(arg.task.request.url)
-          response = HttpResponse(id: arg.task.request.id, content: responseStr)
-          responseEncoded = Json.encode(response)
-        info "[threadpool task] received response for task",
-          url=arg.task.request.url, response=responseStr
-        info "[threadpool task] sending response", id=response.id,
-          encoded=responseEncoded
-        arg.chanSendToTest.sendSync(responseEncoded.safe)
+      while true:
+        info "[threadpool task thread] waiting for message"
+        let received = $(await arg.chanControlRecv.recv())
 
-        let
-          noticeToWorker = ThreadNotification(id: arg.id, notice: "done")
-          noticeToWorkerEncode = Json.encode(noticeToWorker)
-        info "[threadpool task] sending 'done' notice to worker",
-          threadid=arg.id
-        arg.chanSendToWorker.sendSync(noticeToWorkerEncode.safe)
-      except Exception as e:
-        error "[threadpool task] exception", error=e.msg
+        try:
+          var task = Json.decode(received, ThreadTask)
+          info "[threadpool task thread] received task", url=task.request.url
 
-      discard arg.chanControlRecv.recvSync()
+          info "[threadpool task thread] initiating task", url=task.request.url,
+            threadid=arg.id
+
+          try:
+            let
+              client = HttpClient()
+              responseStr = client.getContent(task.request.url)
+              response = HttpResponse(id: task.request.id, content: responseStr)
+              responseEncoded = Json.encode(response)
+            info "[threadpool task thread] received response for task",
+              url=task.request.url, response=responseStr
+            info "[threadpool task thread] sending response", id=response.id,
+              encoded=responseEncoded
+            await arg.chanSendToTest.send(responseEncoded.safe)
+
+            let
+              noticeToWorker = ThreadNotification(id: arg.id, notice: "done")
+              noticeToWorkerEncode = Json.encode(noticeToWorker)
+            info "[threadpool task thread] sending 'done' notice to worker",
+              threadid=arg.id
+            await arg.chanSendToWorker.send(noticeToWorkerEncode.safe)
+          except Exception as e:
+            error "[threadpool task thread] exception", error=e.msg
+        except Exception as e: # not a ThreadTask
+          if received == "shutdown":
+            info "[threadpool task thread] received 'shutdown'"
+            info "[threadpool task thread] breaking while loop"
+            break
+
+          else:
+            error "[threadpool task thread] unknown message", message=received, error=e.msg
 
       arg.chanControlRecv.close()
       arg.chanSendToTest.close()
@@ -109,20 +129,36 @@ procSuite "Task runner synchronous use cases":
     proc worker(arg: ThreadArg) {.async.} =
       let chanRecv = arg.chanRecv
       let chanSend = arg.chanSend
-      var threadCounter = 0 # serves as thread id, should never decrement
       var threadsRunning = newTable[int, tuple[thr: Thread[ThreadTaskArg],
         chanControlRecv: AsyncChannel[ThreadSafeString]]]()
+      var threadsAvailable: seq[tuple[id: int, thr: Thread[ThreadTaskArg],
+        chanControlRecv: AsyncChannel[ThreadSafeString]]] = @[]
       var taskQueue: seq[ThreadTask] = @[] # FIFO queue
+      var allReady = 0
       chanRecv.open()
       chanSend.open()
+
+      for i in 1..MaxThreadPoolSize:
+        let chanControlRecv = newAsyncChannel[ThreadSafeString](-1)
+        chanControlRecv.open()
+        let arg = ThreadTaskArg(chanSendToWorker: chanRecv,
+          chanSendToTest: chanSend, chanControlRecv: chanControlRecv,
+          id: i)
+        var thr = Thread[ThreadTaskArg]()
+        createThread(thr, taskThread, arg)
+        info "[threadpool worker] adding to threadsAvailable",
+          newlength=(threadsAvailable.len + 1), threadid=i
+        threadsAvailable.add (i, thr, chanControlRecv)
 
       # if task received and number running threads == MaxThreadPoolSize,
       # then put the task in a queue
 
-      # if task received and number running threads < MaxThreadPoolSize,
-      # create a thread, set up AsyncChannel(s), and run task in that thread
+      # if task received and number running threads < MaxThreadPoolSize, pop a
+      # thread from threadsAvailable, track thread in threadsRunning, and run
+      # task in that thread
 
-      # if thread "done" received, teardown thread
+      # if thread "done" received, remove thread from threadsRunning, and push
+      # thread into threadsAvailable
 
       info "[threadpool worker] sending 'ready'"
       await chanSend.send("ready".safe)
@@ -133,6 +169,13 @@ procSuite "Task runner synchronous use cases":
 
         if received == "shutdown":
           info "[threadpool worker] received 'shutdown'"
+          info "[threadpool work] sending 'shutdown' to all task threads"
+          # will need to send "shutdown" message to combined seq of
+          # threadsAvailable + seq from threadsRunning
+          for tpl in threadsAvailable:
+            await tpl.chanControlRecv.send("shutdown".safe)
+          for tpl in threadsRunning.values:
+            await tpl.chanControlRecv.send("shutdown".safe)
           info "[threadpool worker] breaking while loop"
           break
 
@@ -140,8 +183,14 @@ procSuite "Task runner synchronous use cases":
           var task = Json.decode(received, ThreadTask)
           info "[threadpool worker] received task", url=task.request.url
 
+          if allReady < MaxThreadPoolSize or threadsRunning.len == MaxThreadPoolSize:
+            # add to queue
+            info "[threadpool worker] adding to taskQueue",
+              newlength=(taskQueue.len + 1)
+            taskQueue.add task
+
           # do we have available threads in the threadpool?
-          if threadsRunning.len < MaxThreadPoolSize:
+          elif threadsRunning.len < MaxThreadPoolSize:
             # check if we have tasks waiting on queue
             if taskQueue.len > 0:
               # remove first element from the task queue
@@ -153,37 +202,27 @@ procSuite "Task runner synchronous use cases":
               task = taskQueue[0]
               taskQueue.delete 0, 0
 
-            try:
-              let chanControlRecv = newAsyncChannel[ThreadSafeString](-1)
-              let arg = ThreadTaskArg(task: task, chanSendToWorker: chanRecv,
-                chanSendToTest: chanSend, chanControlRecv: chanControlRecv,
-                id: threadCounter)
-              var thr = Thread[ThreadTaskArg]()
-              createThread(thr, taskThread, arg)
-              info "[threadpool worker] adding to threadsRunning",
-                newlength=(threadsRunning.len + 1), threadid=arg.id
-              threadsRunning.add threadCounter, (thr, chanControlRecv)
-              threadCounter = threadCounter + 1
-            except Exception as e:
-              error "[threadpool worker] exception during thread creation",
-                error=e.msg
-
-          elif threadsRunning.len >= MaxThreadPoolSize:
-            # add to queue
-            info "[threadpool worker] adding to taskQueue",
-              newlength=(taskQueue.len + 1)
-            taskQueue.add task
+            info "[threadpool worker] removing from threadsAvailable",
+              newlength=(threadsAvailable.len - 1)
+            let tpl = threadsAvailable[0]
+            threadsAvailable.delete 0, 0
+            info "[threadpool worker] adding to threadsRunning",
+              newlength=(threadsRunning.len + 1), threadid=tpl.id
+            threadsRunning.add tpl.id, (tpl.thr, tpl.chanControlRecv)
+            await tpl.chanControlRecv.send(received.safe)
         except Exception as e: # not a ThreadTask
           try:
             let notification = Json.decode(received, ThreadNotification)
             info "[threadpool worker] received notification",
               notice=notification.notice, threadid=notification.id
-            if notification.notice == "done":
+            if notification.notice == "ready":
+              info "[threadpool worker] received 'ready' from a task thread"
+              allReady = allReady + 1
+            elif notification.notice == "done":
               let tpl = threadsRunning[notification.id]
-              tpl.chanControlRecv.open()
-              tpl.chanControlRecv.sendSync("shutdown".safe)
-              joinThread(tpl.thr)
-              tpl.chanControlRecv.close()
+              info "[threadpool worker] adding to threadsAvailable",
+                  newlength=(threadsAvailable.len + 1)
+              threadsAvailable.add (notification.id, tpl.thr, tpl.chanControlRecv)
               info "[threadpool worker] removing from threadsRunning",
                 newlength=(threadsRunning.len - 1), threadid=notification.id
               threadsRunning.del notification.id
@@ -194,34 +233,22 @@ procSuite "Task runner synchronous use cases":
                 let task = taskQueue[0]
                 taskQueue.delete 0, 0
 
-                # Can run into problems related to max file descriptors
-                # allowed: https://wilsonmar.github.io/maximum-limits/
-                # Check with: `ulimit -n` / `launchctl limit maxfiles`
-
-                # When running e.g. `newAsyncChannel` if the max number is
-                # exceeded then the instantiation will fail and it seems as if
-                # old/closed ones aren't getting cleaned up, at least w/
-                # respect to their file descriptors, so waiting and trying
-                # again doesn't help
-
-                try:
-                  let chanControlRecv = newAsyncChannel[ThreadSafeString](-1)
-                  let arg = ThreadTaskArg(task: task,
-                    chanSendToWorker: chanRecv, chanSendToTest: chanSend,
-                    chanControlRecv: chanControlRecv, id: threadCounter)
-                  var thr = Thread[ThreadTaskArg]()
-                  createThread(thr, taskThread, arg)
-                  info "[threadpool worker] adding to threadsRunning",
-                    newlength=(threadsRunning.len + 1), threadid=arg.id
-                  threadsRunning.add threadCounter, (thr, chanControlRecv)
-                  threadCounter = threadCounter + 1
-                except Exception as e:
-                  error "[threadpool worker] exception during thread creation", error=e.msg
+                info "[threadpool worker] removing from threadsAvailable",
+                  newlength=(threadsAvailable.len - 1)
+                let tpl = threadsAvailable[0]
+                threadsAvailable.delete 0, 0
+                info "[threadpool worker] adding to threadsRunning",
+                  newlength=(threadsRunning.len + 1), threadid=tpl.id
+                threadsRunning.add tpl.id, (tpl.thr, tpl.chanControlRecv)
+                await tpl.chanControlRecv.send(Json.encode(task).safe)
 
             else:
               error "[threadpool worker] unknown notification", notice=notification.notice
           except Exception as e:
             warn "[threadpool worker] unknown message", message=received, error=e.msg
+
+      # will need to joinThreads(combined seq of threadsAvailable + seq from
+      # threadsRunning)
 
       chanRecv.close()
       chanSend.close()
@@ -233,16 +260,27 @@ procSuite "Task runner synchronous use cases":
     let chanSend = newAsyncChannel[ThreadSafeString](-1)
     let arg = ThreadArg(chanRecv: chanSend, chanSend: chanRecv)
     var thr = Thread[ThreadArg]()
-    var receivedIds: seq[int] = @[]
-    # if `testRuns` is large enough (also related to `MaxThreadPoolSize` and
-    # maybe FDs not being cleaned up from previous tests) then will run into
-    # problem involving "Too many open files" FD limit
-    let testRuns = 100
 
     chanRecv.open()
     chanSend.open()
     createThread(thr, workerThread, arg)
 
+    proc sender(n: int) {.async.} =
+      for i in 1..n:
+        let
+          request = HttpRequest(id: i, url: "https://" & $i)
+          task = ThreadTask(request: request)
+          taskEncoded = Json.encode(task)
+        info "[threadpool test sender] sending request", id=request.id,
+          url=request.url
+        await chanSend.send(taskEncoded.safe)
+
+        let ms = rand(1..25)
+        info "[threadpool test sender] sleeping", duration=($ms & "ms")
+        await sleepAsync ms.milliseconds
+
+    let testRuns = 100
+    var receivedCount = 0
     var shutdown = false
 
     while true:
@@ -251,27 +289,24 @@ procSuite "Task runner synchronous use cases":
 
       try:
         let response = Json.decode(received, HttpResponse)
-        info "[threadpool test] received http response", id=response.id, response=response.content
-        receivedIds.add response.id
-        if receivedIds.len == testRuns + 1:
+        receivedCount = receivedCount + 1
+        info "[threadpool test] received response", id=response.id,
+          content=response.content, count=receivedCount
+        echo "RECEIVED COUNT: " & $receivedCount
+        if receivedCount == testRuns:
           info "[threadpool test] sending 'shutdown'"
           await chanSend.send("shutdown".safe)
           shutdown = true
           info "[threadpool test] breaking while loop"
           break
       except Exception as e:
-        error "[threadpool test] exception", error=e.msg
         if received == "ready":
           info "[threadpool test] received 'ready'"
-          for i in 0..testRuns:
-            let
-              request = HttpRequest(id: i, url: "https://" & $i)
-              task = ThreadTask(request: request)
-              taskEncoded = Json.encode(task)
-            await chanSend.send(taskEncoded.safe)
+          discard sender(testRuns)
 
         else:
-          warn "[threadpool test] unknown message", message=received
+          warn "[threadpool test] unknown message", message=received,
+            error=e.msg
 
     joinThread(thr)
 

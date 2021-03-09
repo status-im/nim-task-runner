@@ -15,6 +15,6 @@
 # whatever test follows the waku test.
 
 import
-  ./test_async#,
-  # ./test_sync#,
+  # ./test_async#,
+  ./test_sync#,
   # ./test_long_running
