@@ -79,7 +79,7 @@ procSuite "Task runner long-running use cases":
     chanSend.open()
     createThread(thr, workerThread, arg)
 
-    let testRuns = 100
+    let testRuns = 10000
     var receivedCount = 0
     var shutdown = false
 
@@ -96,7 +96,7 @@ procSuite "Task runner long-running use cases":
             count=receivedCount
           if receivedCount == testRuns:
             info "[ping-pong test] sending 'shutdown'"
-            chanSend.sendSync("shutdown".safe)
+            await chanSend.send("shutdown".safe)
             shutdown = true
             info "[ping-pong test] breaking while loop"
             break
@@ -109,10 +109,10 @@ procSuite "Task runner long-running use cases":
       info "[ping-pong test] sleeping", duration=($ms & "ms")
       await sleepAsync ms.milliseconds
 
-    joinThread(thr)
-
     chanRecv.close()
     chanSend.close()
+
+    joinThread(thr)
 
     check:
       shutdown == true
@@ -249,7 +249,7 @@ procSuite "Task runner long-running use cases":
         info "[waku test sender] sleeping", duration=($ms & "ms")
         await sleepAsync ms.milliseconds
 
-    let testRuns = 100
+    let testRuns = 1000
     var receivedCount = 0
     var shutdown = false
 
@@ -274,15 +274,15 @@ procSuite "Task runner long-running use cases":
 
           if receivedCount == testRuns:
             info "[waku test] sending 'shutdown'"
-            chanSend.sendSync("shutdown".safe)
+            await chanSend.send("shutdown".safe)
             shutdown = true
             info "[waku test] breaking while loop"
             break
 
-    joinThread(thr)
-
     chanRecv.close()
     chanSend.close()
+
+    joinThread(thr)
 
     check:
       shutdown == true

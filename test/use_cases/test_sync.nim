@@ -279,7 +279,7 @@ procSuite "Task runner synchronous use cases":
         info "[threadpool test sender] sleeping", duration=($ms & "ms")
         await sleepAsync ms.milliseconds
 
-    let testRuns = 100
+    let testRuns = 1000
     var receivedCount = 0
     var shutdown = false
 
@@ -308,10 +308,10 @@ procSuite "Task runner synchronous use cases":
           warn "[threadpool test] unknown message", message=received,
             error=e.msg
 
-    joinThread(thr)
-
     chanRecv.close()
     chanSend.close()
+
+    joinThread(thr)
 
     check:
       shutdown == true
