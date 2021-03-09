@@ -79,7 +79,7 @@ procSuite "Task runner long-running use cases":
     chanSend.open()
     createThread(thr, workerThread, arg)
 
-    let testRuns = 10000
+    let testRuns = 100
     var receivedCount = 0
     var shutdown = false
 
@@ -249,7 +249,7 @@ procSuite "Task runner long-running use cases":
         info "[waku test sender] sleeping", duration=($ms & "ms")
         await sleepAsync ms.milliseconds
 
-    let testRuns = 1000
+    let testRuns = 100
     var receivedCount = 0
     var shutdown = false
 
