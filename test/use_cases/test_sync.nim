@@ -25,10 +25,10 @@ procSuite "Task runner synchronous use cases":
 
   asyncTest "Synchronous HTTP requests":
 
-    # `sleep` is used in this test to provide (additional) non-determinism in
-    # send/recv timing, and also to demonstrate how `await [chan].send` calls
-    # can resolve even when a receiver on another thread is not currently
-    # polling the channel with `await [chan].recv`
+    # `sleep` and `sleepAsync` are used in this test to provide (additional)
+    # non-determinism in send/recv timing, and also to demonstrate how `await
+    # [chan].send` calls can resolve even when a receiver on another thread is
+    # not currently polling the channel with `await [chan].recv`
 
     const MaxThreadPoolSize = 16
 
