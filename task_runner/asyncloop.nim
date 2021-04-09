@@ -9,9 +9,9 @@
 #                    Licensed under either of
 #         Apache License, version 2.0, (LICENSE-APACHEv2)
 #                    MIT license (LICENSE-MIT)
-import os, selectors
+import os
 
-import chronos/asyncloop
+import chronos/[asyncloop, selectors2]
 export asyncloop
 
 when defined(windows):
@@ -141,22 +141,28 @@ else:
     var moment: Moment
 
     proc handleContinuation(udata: pointer) {.gcsafe.} =
-      if not(retFuture.finished()):
-        loop.selector.unregister(event)
-        if isNil(udata):
-          retFuture.complete(false)
-        else:
-          retFuture.complete(true)
+      try:
+        if not(retFuture.finished()):
+          loop.selector.unregister(event)
+          if isNil(udata):
+            retFuture.complete(false)
+          else:
+            retFuture.complete(true)
+      except IOSelectorsException as e:
+        raise newException(Defect, e.msg)
 
-    proc cancel(udata: pointer) {.gcsafe.} =
-      if not(retFuture.finished()):
-        loop.selector.unregister(event)
-        if timeout != InfiniteDuration:
-          removeTimer(moment, handleContinuation, nil)
+    proc cancellation(udata: pointer) {.gcsafe.} =
+      try:
+        if not(retFuture.finished()):
+          loop.selector.unregister(event)
+          if timeout != InfiniteDuration:
+            removeTimer(moment, handleContinuation, nil)
+      except IOSelectorsException as e:
+        raise newException(Defect, e.msg)
 
     if timeout != InfiniteDuration:
       moment = Moment.fromNow(timeout)
-      addTimer(moment, handleContinuation, nil)
+      discard setTimer(moment, handleContinuation, nil)
 
     let fd = event.getFd()
     loop.selector.registerEvent(event, data)
@@ -170,5 +176,5 @@ else:
       retFuture.fail(newException(ValueError,
                      "Event descriptor not registered."))
 
-    retFuture.cancelCallback = cancel
+    retFuture.cancelCallback = cancellation
     return retFuture
