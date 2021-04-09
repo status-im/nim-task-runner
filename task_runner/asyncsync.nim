@@ -11,7 +11,7 @@
 #                    MIT license (LICENSE-MIT)
 import os
 
-import chronos/[asyncloop, asyncsync, handles, timer]
+import chronos/[asyncloop, asyncsync, handles, selectors2, timer]
 export asyncsync
 
 import ./osapi
@@ -216,47 +216,53 @@ else:
     else:
       let fd = AsyncFD(event.rfd)
 
-    proc contiunuation(udata: pointer) {.gcsafe.} =
-      if not(retFuture.finished()):
-        var data: uint64 = 0
-        if isNil(udata):
-          removeReader(fd)
-          retFuture.complete(WaitTimeout)
-        else:
-          while true:
-            if posix.read(cint(fd), addr data,
-                          sizeof(uint64)) != sizeof(uint64):
-              let err = osLastError()
-              if cint(err) == posix.EINTR:
-                # This error happens when interrupt signal was received by
-                # process so we need to repeat `read` syscall.
-                continue
-              elif cint(err) == posix.EAGAIN or
-                   cint(err) == posix.EWOULDBLOCK:
-                # This error happens when there already pending `read` syscall
-                # in different thread for this descriptor. This is race
-                # condition, so to avoid it we will wait for another `read`
-                # event from system queue.
-                break
+    proc contiunuation(udata: pointer) {.gcsafe, raises: [Defect].} =
+      try:
+        if not(retFuture.finished()):
+          var data: uint64 = 0
+          if isNil(udata):
+            removeReader(fd)
+            retFuture.complete(WaitTimeout)
+          else:
+            while true:
+              if posix.read(cint(fd), addr data,
+                            sizeof(uint64)) != sizeof(uint64):
+                let err = osLastError()
+                if cint(err) == posix.EINTR:
+                  # This error happens when interrupt signal was received by
+                  # process so we need to repeat `read` syscall.
+                  continue
+                elif cint(err) == posix.EAGAIN or
+                     cint(err) == posix.EWOULDBLOCK:
+                  # This error happens when there already pending `read` syscall
+                  # in different thread for this descriptor. This is race
+                  # condition, so to avoid it we will wait for another `read`
+                  # event from system queue.
+                  break
+                else:
+                  # All other errors
+                  removeReader(fd)
+                retFuture.complete(WaitFailed)
               else:
-                # All other errors
                 removeReader(fd)
-              retFuture.complete(WaitFailed)
-            else:
-              removeReader(fd)
-              when not(defined(linux)):
-                when hasThreadSupport:
-                  acquire(event.lock)
-                event.flag = false
-                when hasThreadSupport:
-                  release(event.lock)
-              retFuture.complete(WaitSuccess)
-            break
+                when not(defined(linux)):
+                  when hasThreadSupport:
+                    acquire(event.lock)
+                  event.flag = false
+                  when hasThreadSupport:
+                    release(event.lock)
+                retFuture.complete(WaitSuccess)
+              break
+      except IOSelectorsException, ValueError:
+        raise newException(Defect, getCurrentExceptionMsg())
 
-    proc cancel(udata: pointer) {.gcsafe.} =
-      if not(retFuture.finished()):
-        removeTimer(moment, contiunuation, nil)
-        removeReader(fd)
+    proc cancellation(udata: pointer) {.gcsafe, raises: [Defect].} =
+      try:
+        if not(retFuture.finished()):
+          removeTimer(moment, contiunuation, nil)
+          removeReader(fd)
+      except IOSelectorsException, ValueError:
+        raise newException(Defect, getCurrentExceptionMsg())
 
     if fd notin loop:
       register(fd)
@@ -265,7 +271,7 @@ else:
       moment = Moment.fromNow(timeout)
       addTimer(moment, contiunuation, nil)
 
-    retFuture.cancelCallback = cancel
+    retFuture.cancelCallback = cancellation
     return retFuture
 
   proc waitReady(fd: int, timeout: var Duration): WaitResult {.inline.} =
