@@ -175,7 +175,8 @@ procSuite "Task runner long-running use cases":
         await chanSend.send(payload.safe)
 
       proc makeWakuMessage(s: string): WakuMessage =
-        WakuMessage(payload: cast[seq[byte]](s), contentTopic: ContentTopic(1))
+        WakuMessage(payload: cast[seq[byte]](s),
+          contentTopic: ContentTopic("test"))
 
       proc publisher(node: WakuNode, topic: string, message: string) {.async.} =
         let ms = rand(10..250)
