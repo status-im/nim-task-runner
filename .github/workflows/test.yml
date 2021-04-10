@@ -80,6 +80,7 @@ jobs:
       - name: Build and run tests
         run: |
           make -j${NPROC} NIMFLAGS="--parallelBuild:${NPROC}" V=1 test
+          echo bump
 
       - name: Build and run helgrind tasks
         if: matrix.platform.os == 'ubuntu'
