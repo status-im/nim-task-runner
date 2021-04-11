@@ -12,3 +12,9 @@
 [submodule "vendor/nim-chronos"]
 	path = vendor/nim-chronos
 	url = https://github.com/michaelsbradleyjr/nim-chronos.git
+[submodule "vendor/nim-http-utils"]
+	path = vendor/nim-http-utils
+	url = https://github.com/status-im/nim-http-utils.git
+[submodule "vendor/nim-unittest2"]
+	path = vendor/nim-unittest2
+	url = https://github.com/status-im/nim-unittest2.git
