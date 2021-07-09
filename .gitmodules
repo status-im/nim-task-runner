@@ -18,3 +18,15 @@
 [submodule "vendor/nim-unittest2"]
 	path = vendor/nim-unittest2
 	url = https://github.com/status-im/nim-unittest2.git
+[submodule "vendor/nim-json-serialization"]
+	path = vendor/nim-json-serialization
+	url = https://github.com/status-im/nim-json-serialization.git
+[submodule "vendor/nim-chronicles"]
+	path = vendor/nim-chronicles
+	url = https://github.com/status-im/nim-chronicles.git
+[submodule "vendor/nim-faststreams"]
+	path = vendor/nim-faststreams
+	url = https://github.com/status-im/nim-faststreams.git
+[submodule "vendor/nim-serialization"]
+	path = vendor/nim-serialization
+	url = https://github.com/status-im/nim-serialization.git

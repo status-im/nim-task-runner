@@ -13,7 +13,7 @@ import strutils
 
 import chronos/[handles, transport]
 
-import ./asyncloop, ./asyncsync
+import ./chronos_plus/[asyncloop, asyncsync]
 
 when hasThreadSupport:
   import locks
