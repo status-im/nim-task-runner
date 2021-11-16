@@ -1,5 +1,5 @@
-import # vendor libs
-  chronicles, chronos, json_serialization, json_serialization/std/options
+import
+  pkg/[chronicles, chronos, json_serialization, json_serialization/std/options]
 
 export chronicles, chronos, json_serialization, options
 
