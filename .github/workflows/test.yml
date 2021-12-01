@@ -14,8 +14,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cache_nonce: [ 8 ]
-        nim_version: [ 1.2.14, 1.4.8, 1.6.0 ]
+        cache_nonce: [ 17 ]
+        # next gen nimble is presently not compatible with Nim 1.2.x and 1.4.x
+        # see: https://forum.nim-lang.org/t/8669
+        # nim_version: [ 1.2.14, 1.4.8, 1.6.0 ]
+        nim_version: [ 1.6.0 ]
         platform:
           - {
             icon: 🍎,
@@ -87,9 +90,14 @@ jobs:
         with:
           path: |
             ${{ steps.calc-paths.outputs.choosenim }}
-            ${{ steps.calc-paths.outputs.nimble }}
-            !${{ steps.calc-paths.outputs.nimble }}/pkgs
+            ${{ steps.calc-paths.outputs.nimble }}/bin
+            ${{ steps.calc-paths.outputs.nimble }}/pkgs2-NODELETE
           key: ${{ matrix.platform.os }}-nim_version:${{ matrix.nim_version }}-dot_nimble_hash:${{ steps.calc-hash.outputs.sha1 }}-cache_nonce:${{ matrix.cache_nonce }}
+
+      - name: Setup ~/.bash_env
+        run: |
+          echo 'export NIMBLE_DIR="${HOME}/.nimble"' >> "${HOME}/.bash_env"
+          echo 'export PATH="${NIMBLE_DIR}/bin:${PATH}"' >> "${HOME}/.bash_env"
 
       - name: Install choosenim and Nim tooling
         if: steps.choosenim-nim-tooling-cache.outputs.cache-hit != 'true'
@@ -105,21 +113,45 @@ jobs:
           if [[ ${{ matrix.platform.os }} = windows ]]; then
             mv "$(cygpath "${USERPROFILE}")/.nimble" "${HOME}/"
           fi
+          source "${HOME}/.bash_env"
+          # install nimble@#head via nimble shipped with Nim v${{ matrix.nim_version }}
+          nimble --accept install nimble@#head
+          cd "${NIMBLE_DIR}/bin"
+          if [[ ${{ matrix.platform.os }} = windows ]]; then
+            rm -rf nimble nimble.cmd nimble.exe
+            cp ../pkgs/nimble-*/nimble.exe nimble.exe
+          else
+            rm -rf nimble
+            ln -s ../pkgs/nimble-*/nimble nimble
+          fi
+          # install nimble@#head via nimble@#head
+          nimble --accept install nimble@#head
+          cd "${NIMBLE_DIR}"
+          mkdir -p pkgs2-NODELETE
+          mv pkgs2/nimble-* pkgs2-NODELETE/
+          cd bin
+          if [[ ${{ matrix.platform.os }} = windows ]]; then
+            rm -rf nimble nimble.cmd nimble.exe
+            cp ../pkgs2-NODELETE/nimble-*/nimble.exe nimble.exe
+          else
+            rm -rf nimble
+            ln -s ../pkgs2-NODELETE/nimble-*/nimble nimble
+          fi
+          cd ..
+          rm -rf pkgs && mkdir -p pkgs
 
       - name: Install project dependencies
         run: |
-          echo 'export NIMBLE_DIR="${HOME}/.nimble"' >> "${HOME}/.bash_env"
-          echo 'export PATH="${NIMBLE_DIR}/bin:${PATH}"' >> "${HOME}/.bash_env"
           source "${HOME}/.bash_env"
           nimble --accept install
 
       - name: Build and run tests
         run: |
           source "${HOME}/.bash_env"
-          nimble test
+          NIMBLE_PKGS="${NIMBLE_DIR}/pkgs2" nimble test
 
       - name: Build and run helgrind tasks (Linux)
         if: matrix.platform.os == 'ubuntu'
         run: |
           source "${HOME}/.bash_env"
-          nimble helgrind_achannels
+          NIMBLE_PKGS="${NIMBLE_DIR}/pkgs2" nimble helgrind_achannels

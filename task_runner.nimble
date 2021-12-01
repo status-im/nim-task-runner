@@ -6,17 +6,11 @@ description   = "General purpose background task runner for Nim programs"
 license       = "Apache License 2.0 or MIT"
 skipDirs      = @["test"]
 
-requires "nim >= 1.2.0",
-         "chronicles",
+requires "chronicles",
          "https://github.com/michaelsbradleyjr/nim-chronos.git#export-selector-field",
          "json_serialization"
 
-import os
-
-const chronos_preferred =
-  " --path:\"" &
-  staticExec("nimble path chronos --silent").parentDir /
-  "chronos-#export-selector-field\""
+import std/os
 
 task test, "Build and run all tests":
   rmDir "test/build/"
@@ -32,7 +26,7 @@ task test, "Build and run all tests":
     " --stacktrace:on" &
     " --threads:on" &
     " --tlsEmulation:off" &
-    chronos_preferred &
+    (if getEnv("NIMBLE_PKGS") != "": " --nimblePath:" & getEnv("NIMBLE_PKGS") else: "") &
     " test/test_all.nim",
     "test/build/test_all"
   ]
@@ -48,7 +42,7 @@ task helgrind_achannels, "Build achannels test and run through helgrind to detec
     " --out:test/build/test_achannels" &
     " --threads:on" &
     " --tlsEmulation:off" &
-    chronos_preferred &
+    (if getEnv("NIMBLE_PKGS") != "": " --nimblePath:" & getEnv("NIMBLE_PKGS") else: "") &
     " test/test_achannels.nim",
     "valgrind --tool=helgrind test/build/test_achannels"
   ]
