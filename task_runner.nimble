@@ -6,58 +6,45 @@ description   = "General purpose background task runner for Nim programs"
 license       = "Apache License 2.0 or MIT"
 skipDirs      = @["test"]
 
-requires "nim >= 1.2.0",
-  "chronos"
+requires "chronicles",
+         "https://github.com/michaelsbradleyjr/nim-chronos.git#export-selector-field",
+         "json_serialization"
 
-proc buildAndRunTest(name: string,
-                     srcDir = "test/",
-                     outDir = "test/build/",
-                     params = "",
-                     cmdParams = "",
-                     lang = "c") =
-  rmDir outDir
-  mkDir outDir
-  # allow something like "nim test --verbosity:0 --hints:off beacon_chain.nims"
-  var extra_params = params
-  for i in 2..<paramCount():
-    extra_params &= " " & paramStr(i)
-  exec "nim " &
-    lang &
+import std/os
+
+task test, "Build and run all tests":
+  rmDir "test/build/"
+  mkDir "test/build/"
+  var commands = [
+    "nim c" &
     " --debugger:native" &
     " --define:chronicles_line_numbers" &
     " --define:debug" &
     " --define:ssl" &
     " --linetrace:on" &
-    " --nimcache:nimcache/test/" & name &
-    " --out:" & outDir & name &
+    " --out:test/build/" &
     " --stacktrace:on" &
     " --threads:on" &
     " --tlsEmulation:off" &
-    " " &
-    extra_params &
-    " " &
-    srcDir & name & ".nim" &
-    " " &
-    cmdParams
-  exec outDir & name
+    (if getEnv("NIMBLE_PKGS") != "": " --nimblePath:" & getEnv("NIMBLE_PKGS") else: "") &
+    " test/test_all.nim",
+    "test/build/test_all"
+  ]
+  for command in commands:
+    exec command
 
-task tests, "Run all tests":
-  buildAndRunTest "test_all"
-
-task achannels_helgrind, "Run channel implementation through helgrind to detect threading or lock errors":
+task helgrind_achannels, "Build achannels test and run through helgrind to detect threading or lock errors":
   rmDir "test/build/"
   mkDir "test/build/"
   var commands = [
     "nim c" &
     " --define:useMalloc" &
-    " --nimcache:nimcache/test/achannels_helgrind" &
     " --out:test/build/test_achannels" &
     " --threads:on" &
     " --tlsEmulation:off" &
+    (if getEnv("NIMBLE_PKGS") != "": " --nimblePath:" & getEnv("NIMBLE_PKGS") else: "") &
     " test/test_achannels.nim",
     "valgrind --tool=helgrind test/build/test_achannels"
   ]
-  echo "\n" & commands[0]
-  exec commands[0]
-  echo "\n" & commands[1]
-  exec commands[1]
+  for command in commands:
+    exec command
